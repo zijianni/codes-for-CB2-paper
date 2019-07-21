@@ -1,0 +1,368 @@
+---
+title: "7-20"
+output: html_document
+---
+
+R version 3.6, Bioconductor version 3.9 and DropletUtils version 1.3.14
+
+Delete protein in MALT and PBMC1K at the beginning.
+
+```{r,warning=F,echo=F,message=FALSE}
+SEED=2019
+library(scCB2)
+
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC68K.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/UW.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/MALT.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/mbrain.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC1K.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC8K.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_bg_new.RData")
+
+
+
+sessionInfo()
+
+
+# MALT_r <- as(MALT_r, "dgCMatrix")
+# MALT_f <- as(MALT_f, "dgCMatrix")
+# 
+# mbrain_r <- as(mbrain_r, "dgCMatrix")
+# mbrain_f <- as(mbrain_f, "dgCMatrix")
+# 
+# save(MALT_r,MALT_f,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/MALT.RData")
+# save(mbrain_r,mbrain_f,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/mbrain.RData")
+# PBMC1K_r <- as(PBMC1K_r, "dgCMatrix")
+# PBMC1K_f <- as(PBMC1K_f, "dgCMatrix")
+#save(PBMC1K_r,PBMC1K_f,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC1K.RData")
+
+
+# MALT_p <- grep(pattern = "TotalSeqB",x = rownames(MALT_r))
+# MALT_r <- MALT_r[-MALT_p,]
+# 
+# PBMC1K_p <- grep(pattern = "TotalSeqB",x = rownames(PBMC1K_r))
+# PBMC1K_r <- PBMC1K_r[-PBMC1K_p,]
+
+#load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/MALT_1_Ent_ts.RData")
+#MALT_knee <- barcodeRanks(MALT_r,lower = 100)@metadata$knee
+# MALT_inflection <- barcodeRanks(MALT_r,lower = 100)@metadata$inflection
+#mbrain_knee <- barcodeRanks(mbrain_r,lower = 100)@metadata$knee
+# mbrain_inflection <- barcodeRanks(mbrain_r,lower = 100)@metadata$inflection
+# PBMC1K_knee <- barcodeRanks(PBMC1K_r,lower = 100)@metadata$knee
+# PBMC1K_inflection <- barcodeRanks(PBMC1K_r,lower = 100)@metadata$inflection
+# PBMC_knee <- barcodeRanks(PBMC_r,lower = 100)@metadata$knee
+# PBMC_inflection <- barcodeRanks(PBMC_r,lower = 100)@metadata$inflection
+# UW_knee <- barcodeRanks(UW_r,lower = 100)@metadata$knee
+# UW_inflection <- barcodeRanks(UW_r,lower = 100)@metadata$inflection
+
+```
+
+```{r,echo=F}
+reorder_mat <- function(mat, rate = 0.1) {
+  N_row <- as.integer(nrow(mat) * rate)
+  x <- 1:nrow(mat)
+  reorder_row <- sample(x, N_row)
+  x[sort(reorder_row)] <- reorder_row
+  return(mat[x, ])
+}
+
+SIM2 <-
+  function(n = 5,
+           dat,
+           dat_bg = NULL,
+           threshold = 100,
+           n_large = 2000,
+           n_middle = 2000,
+           n_small = 2000,
+           new_sim = T,
+           remove_protein = T,
+           FDR = 0.01,
+           reorder_rate = 0.1,
+           threegroup = T,
+           usePackage = T,
+           ...) {
+    if (remove_protein) {
+      protein <- grep(pattern = "TotalSeqB", x = rownames(dat))
+      if (length(protein) > 0) {
+        dat <- dat[-protein, ]
+      }
+    }
+    brank <- DropletUtils::barcodeRanks(dat, lower = threshold)
+    inflection <-
+      ifelse(is.null(brank$inflection),
+             brank@metadata$inflection,
+             brank$inflection)
+    
+    ###background barcodes
+    if (is.null(dat_bg)) {
+      dat_bg <- SIM_bg(dat, threshold = threshold)
+    }
+    
+    
+    all_bg <- sum(Matrix::colSums(dat) %in% 1:inflection)
+    th_bg <- sum(Matrix::colSums(dat) %in% (threshold + 1):inflection)
+    
+    dat_true1 <- dat[, Matrix::colSums(dat) > inflection]
+    
+    
+    TP_CB2 <- matrix(0, 6, n + 1)
+    colnames(TP_CB2) <- c(paste0("rep", 1:n), "Ave")
+    rownames(TP_CB2) <-
+      c("G1", "G1 prop", "G2", "G2 prop", "G3", "G3 prop")
+    
+    FP_CB2 <- TP_CB2[1:4, ]
+    rownames(FP_CB2) <-
+      c(
+        paste0("all (", all_bg, ")"),
+        "all prop",
+        paste0(">", threshold, " (", th_bg, ")"),
+        paste0(">", threshold, " prop")
+      )
+    
+    TP_ED <- TP_CB2
+    FP_ED <- FP_CB2
+    
+    SEED.rep <- as.integer(runif(n, 1, 100000))
+    
+    for (sss in 1:n) {
+      SEED.tmp <- SEED.rep[sss]
+      
+      cat(paste0("Run ", sss, "\n"))
+      
+      
+      set.seed(SEED.tmp)
+      
+      
+      
+      ###2000 G1 large cells
+      G1 <- dat_true1[, sample(ncol(dat_true1), n_large, replace = T)]
+      colnames(G1) <- paste0("G1_", 1:ncol(G1))
+      G1 <- as(G1, "dgCMatrix")
+      
+      if (threegroup) {
+        ###2000 G2 middle cells (50% downsampling)
+        G2 <- dat_true1[, sample(ncol(dat_true1), n_middle, replace = T)]
+        G2 <- as(G2, "dgCMatrix")
+        G2 <- DropletUtils::downsampleMatrix(G2, 0.5)
+        colnames(G2) <- paste0("G2_", 1:ncol(G2))
+      }
+      
+      
+      ###2000 G3 small cells (10% downsampling)
+      G3 <- dat_true1[, sample(ncol(dat_true1), n_small, replace = T)]
+      G3 <- as(G3, "dgCMatrix")
+      G3 <- DropletUtils::downsampleMatrix(G3, 0.1)
+      colnames(G3) <- paste0("G3_", 1:ncol(G3))
+      
+      if (new_sim) {
+        G1 <- reorder_mat(G1, rate = reorder_rate)
+        if (threegroup)
+          G2 <- reorder_mat(G2, rate = reorder_rate)
+        G3 <- reorder_mat(G3, rate = reorder_rate)
+      }
+
+      if (threegroup) {
+        dat_sim1 <- cbind(dat_bg, G1, G2, G3)
+      } else{
+        dat_sim1 <- cbind(dat_bg, G1, G3)
+      }
+      
+      
+      
+      set.seed(SEED.tmp)
+        if(usePackage){
+            res_CB2 <-
+                scCB2::CB2FindCell(dat_sim1,
+                          pooling_threshold = threshold,
+                          FDR_threshold = FDR,
+                          ...)
+        }else{
+            res_CB2 <-
+                Find_Cell(dat_sim1,
+                          pooling_threshold = threshold,
+                          FDR_threshold = FDR,
+                          ...)
+        }
+
+        res1 <-
+          c(colnames(res_CB2$cluster_matrix),
+            colnames(res_CB2$cell_matrix))
+
+      
+      
+      
+      TP_CB2[1, sss] <- length(grep(x = res1, pattern = "G1"))
+      TP_CB2[2, sss] <- TP_CB2[1, sss] / n_large
+      
+      TP_CB2[3, sss] <- length(grep(x = res1, pattern = "G2"))
+      TP_CB2[4, sss] <- TP_CB2[3, sss] / n_middle
+      
+      TP_CB2[5, sss] <- length(grep(x = res1, pattern = "G3"))
+      TP_CB2[6, sss] <- TP_CB2[5, sss] / n_small
+      
+      FP_CB2[1, sss] <- length(grep(x = res1, pattern = "bg"))
+      FP_CB2[2, sss] <- FP_CB2[1, sss] / all_bg
+      
+      FP_CB2[3, sss] <- length(grep(x = res1, pattern = "bg"))
+      FP_CB2[4, sss] <- FP_CB2[3, sss] / th_bg
+      
+      
+      
+      
+      eOut <- DropletUtils::emptyDrops(dat_sim1, lower = threshold)
+      sim_ED <- dat_sim1[, ifelse(is.na(eOut$FDR), FALSE, eOut$FDR <= FDR)]
+      res_ED2 <- colnames(sim_ED)
+      
+      TP_ED[1, sss] <- length(grep(x = res_ED2, pattern = "G1"))
+      TP_ED[2, sss] <- TP_ED[1, sss] / n_large
+      
+      TP_ED[3, sss] <- length(grep(x = res_ED2, pattern = "G2"))
+      TP_ED[4, sss] <- TP_ED[3, sss] / n_middle
+      
+      TP_ED[5, sss] <- length(grep(x = res_ED2, pattern = "G3"))
+      TP_ED[6, sss] <- TP_ED[5, sss] / n_small
+      
+      FP_ED[1, sss] <- length(grep(x = res_ED2, pattern = "bg"))
+      FP_ED[2, sss] <- FP_ED[1, sss] / all_bg
+      
+      FP_ED[3, sss] <- length(grep(x = res_ED2, pattern = "bg"))
+      FP_ED[4, sss] <- FP_ED[3, sss] / th_bg
+      
+    }
+    
+    
+    TP_CB2[, n + 1] <- rowMeans(TP_CB2[, 1:n])
+    TP_ED[, n + 1] <- rowMeans(TP_ED[, 1:n])
+    FP_CB2[, n + 1] <- rowMeans(FP_CB2[, 1:n])
+    FP_ED[, n + 1] <- rowMeans(FP_ED[, 1:n])
+    
+    Stat <- matrix(NA, 2, 2)
+    colnames(Stat) <- c("CB2", "ED")
+    rownames(Stat) <- c("Power", "FDR")
+    Stat[1, 1] <-
+      (TP_CB2[2, n + 1] * n_large + TP_CB2[4, n + 1] * n_middle + TP_CB2[6, n +
+                                                                           1] * n_small) / (n_large + n_middle + n_small)
+    Stat[1, 2] <-
+      (TP_ED[2, n + 1] * n_large + TP_ED[4, n + 1] * n_middle + TP_ED[6, n +
+                                                                        1] * n_small) / (n_large + n_middle + n_small)
+    Stat[2, 1] <-
+      FP_CB2[3, n + 1] / (FP_CB2[3, n + 1] + Stat[1, 1] * (n_large + n_middle +
+                                                             n_small))
+    Stat[2, 2] <-
+      FP_ED[3, n + 1] / (FP_ED[3, n + 1] + Stat[1, 2] * (n_large + n_middle +
+                                                           n_small))
+    Power_diff <- Stat[1, 1] - Stat[1, 2]
+    
+    return(
+      list(
+        TP_CB2 = TP_CB2,
+        FP_CB2 = FP_CB2,
+        TP_ED = TP_ED,
+        FP_ED = FP_ED,
+        Stat = Stat,
+        Power_diff = Power_diff
+      )
+    )
+  }
+
+```
+
+```{r,echo=F}
+
+set.seed(SEED)
+MALT_SIM <- SIM2(dat = MALT_r,dat_bg = MALT_bg, new_sim = F,Ncores=4)   #~15min v.s. ~3.5min
+
+
+set.seed(SEED)
+mbrain_SIM <- SIM2(dat = mbrain_r,dat_bg = mbrain_bg, new_sim = F,Ncores=4) 
+
+
+set.seed(SEED)
+PBMC1K_SIM <- SIM2(dat = PBMC1K_r,dat_bg = PBMC1K_bg,new_sim = F,Ncores=4)  #~20min v.s. ~2.5min
+
+set.seed(SEED)
+PBMC_SIM <- SIM2(dat = PBMC_r,dat_bg = PBMC_bg,new_sim = F,Ncores=4) #~35min v.s. ~3.5min
+  ######continue here
+set.seed(SEED)
+UW_SIM <- SIM2(dat = UW_r,dat_bg = UW_bg,new_sim = F,Ncores=4) #~24min v.s. ~6min
+
+set.seed(SEED)
+PBMC8K_SIM <- SIM2(dat = PBMC8K_r,dat_bg = PBMC8K_bg,new_sim = F,Ncores=4) #~24min v.s. ~6min
+
+ save(MALT_SIM,mbrain_SIM,PBMC1K_SIM,PBMC_SIM,UW_SIM,PBMC8K_SIM,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_oldSim_scCB2.RData")
+
+```
+
+
+
+##plot
+```{r}
+library(ggplot2)
+RED="#FF9999"
+BLUE="#56B4E9"
+GREEN="#009E73"
+YELLOW="#F0E442"
+
+Res_list <- list()
+Res_list[[1]] <- MALT_SIM
+Res_list[[2]] <- mbrain_SIM
+Res_list[[3]] <- PBMC_SIM
+Res_list[[4]] <- PBMC1K_SIM
+Res_list[[5]] <- PBMC8K_SIM
+Res_list[[6]] <- UW_SIM
+
+G1E <- unlist(lapply(Res_list,function(x) x$TP_CB2[2,ncol(x$TP_CB2)]))
+G1ED <- unlist(lapply(Res_list,function(x) x$TP_ED[2,ncol(x$TP_ED)]))
+G2E <- unlist(lapply(Res_list,function(x) x$TP_CB2[4,ncol(x$TP_CB2)]))
+G2ED <- unlist(lapply(Res_list,function(x) x$TP_ED[4,ncol(x$TP_ED)]))
+G3E <- unlist(lapply(Res_list,function(x) x$TP_CB2[6,ncol(x$TP_CB2)]))
+G3ED <- unlist(lapply(Res_list,function(x) x$TP_ED[6,ncol(x$TP_ED)]))
+FDR_E <- unlist(lapply(Res_list,function(x) x$Stat[2,1]))
+FDR_ED <- unlist(lapply(Res_list,function(x) x$Stat[2,2]))
+Power_Inc <- unlist(lapply(Res_list,function(x) x$Power_diff))
+
+
+
+NM <- c("MALT","mbrain")
+NM <- c("MALT","mbrain","PBMC1K","PBMC68K","PBMC8K","UW")
+
+plot(rep(2,length(NM))~factor(NM),ylim=c(0,1),ylab="power",xlab=NULL)
+lines(G1E~factor(NM),col=RED)
+lines(G1ED~factor(NM),col=GREEN)
+lines(G2E~factor(NM),col=RED,lty=2)
+lines(G2ED~factor(NM),col=GREEN,lty=2)
+lines(G3E~factor(NM),col=RED,lty=3)
+lines(G3ED~factor(NM),col=GREEN,lty=3)
+#legend("bottomright",lty=c(1,1,1,2,3),col=c(RED,GREEN,"black","black","black"),legend=c("CB2","EmptyDrops","G1 (large)","G2 (medium)","G3 (small)"))
+
+plot(rep(200,length(NM))~factor(NM),ylim=range(Power_Inc)*100,ylab="power diff (%) (CB2 - ED)",xlab=NULL)
+lines(Power_Inc*100~factor(NM),col=RED)
+abline(h=0,lty=2)
+ 
+plot(rep(100,length(NM))~factor(NM),type="l",ylim=c(0,5),ylab="FDR (%)")
+lines(FDR_E*100~factor(NM),col=RED)
+lines(FDR_ED*100~factor(NM),col=GREEN)
+abline(h=1,lty=2)
+legend("topright",lty=1,col=c(RED,GREEN),legend=c("CB2","EmptyDrops"))
+
+#str(G1E)
+sim_plot <- data.frame(Power=c(G1E,G1ED,G2E,G2ED,G3E,G3ED),Group=rep(c("G1","G2","G3"),each=12),
+                       Method=rep(rep(c("CB2","EmptyDrops"),each=6),3),Dataset=rep(NM,6))
+FDR_plot <- data.frame(FDR=c(FDR_E,FDR_ED),Dataset=NM,Method=rep(c("CB2","EmptyDrops"),each=6))
+ggplot(data=FDR_plot,aes(y=FDR*100,x=Dataset))+geom_col(aes(fill=Method),position="dodge")+geom_hline(yintercept = 1,linetype="dashed")+ylab("FDR (%)")+ylim(c(0,2))+labs(title="FDR")+
+  scale_x_discrete(limits=sort(NM,decreasing = T))+coord_flip()
+
+temp <- "MALT"
+temp_plot <- sim_plot[sim_plot$Dataset==temp,]
+ggplot(data=temp_plot,aes(y=Power,x=Group))+geom_col(aes(fill=Method),position="dodge")+
+  labs(title=temp)+ylim(0,1)
+
+
+```
+
+
+
+
+
+
