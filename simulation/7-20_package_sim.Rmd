@@ -252,7 +252,7 @@ set.seed(SEED)
 PBMC1K_SIM <- SIM2(dat = PBMC1K_r,dat_bg = PBMC1K_bg,new_sim = T,Ncores=4)
 
 set.seed(SEED)
-PBMC_SIM <- SIM2(dat = PBMC_r,dat_bg = PBMC_bg,new_sim = T,Ncores=4)
+PBMC68K_SIM <- SIM2(dat = PBMC_r,dat_bg = PBMC_bg,new_sim = T,Ncores=4)
 
 set.seed(SEED)
 UW_SIM <- SIM2(dat = UW_r,dat_bg = UW_bg,new_sim = T,Ncores=4)
@@ -260,7 +260,7 @@ UW_SIM <- SIM2(dat = UW_r,dat_bg = UW_bg,new_sim = T,Ncores=4)
 set.seed(SEED)
 PBMC8K_SIM <- SIM2(dat = PBMC8K_r,dat_bg = PBMC8K_bg,new_sim = T,Ncores=4)
 
-save(MALT_SIM,mbrain_SIM,PBMC1K_SIM,PBMC_SIM,UW_SIM,PBMC8K_SIM,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_newSim_scCB2.RData")
+save(MALT_SIM,mbrain_SIM,PBMC1K_SIM,PBMC68K_SIM,PBMC8K_SIM,UW_SIM,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_newSim_scCB2.RData")
 ```
 
 #Run simulation under hard setting (no shuffling genes)
@@ -278,7 +278,7 @@ set.seed(SEED)
 PBMC1K_SIM <- SIM2(dat = PBMC1K_r,dat_bg = PBMC1K_bg,new_sim = F,Ncores=4)
 
 set.seed(SEED)
-PBMC_SIM <- SIM2(dat = PBMC_r,dat_bg = PBMC_bg,new_sim = F,Ncores=4)
+PBMC68K_SIM <- SIM2(dat = PBMC_r,dat_bg = PBMC_bg,new_sim = F,Ncores=4)
 
 set.seed(SEED)
 UW_SIM <- SIM2(dat = UW_r,dat_bg = UW_bg,new_sim = F,Ncores=4)
@@ -286,16 +286,16 @@ UW_SIM <- SIM2(dat = UW_r,dat_bg = UW_bg,new_sim = F,Ncores=4)
 set.seed(SEED)
 PBMC8K_SIM <- SIM2(dat = PBMC8K_r,dat_bg = PBMC8K_bg,new_sim = F,Ncores=4)
 
-save(MALT_SIM,mbrain_SIM,PBMC1K_SIM,PBMC_SIM,UW_SIM,PBMC8K_SIM,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_oldSim_scCB2.RData")
+save(MALT_SIM,mbrain_SIM,PBMC1K_SIM,PBMC68K_SIM,UW_SIM,PBMC8K_SIM,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_oldSim_scCB2.RData")
 ```
 
 
 
 ##plot
 ```{r}
-#load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_oldSim_scCB2.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_oldSim_scCB2.RData")
 
-load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_newSim_scCB2.RData")
+#load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_newSim_scCB2.RData")
 
 library(ggplot2)
 RED <- "#FF9999"
@@ -307,7 +307,7 @@ Res_list <- list()
 Res_list[[1]] <- MALT_SIM
 Res_list[[2]] <- mbrain_SIM
 Res_list[[3]] <- PBMC1K_SIM
-Res_list[[4]] <- PBMC_SIM
+Res_list[[4]] <- PBMC68K_SIM
 Res_list[[5]] <- PBMC8K_SIM
 Res_list[[6]] <- UW_SIM
 
