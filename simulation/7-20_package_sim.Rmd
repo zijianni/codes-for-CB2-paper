@@ -9,13 +9,17 @@ SEED <- 2019
 library(scCB2)
 library(DropletUtils)
 
-load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC68K.RData")
-load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/UW.RData")
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/MALT.RData")
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/mbrain.RData")
-load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC1K.RData")
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC8K.RData")
-load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_bg_new.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/mbrain1K.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/placenta.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/Alzheimer.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/T293.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/jurkat.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PanT4K.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC4K.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/mbrain9K.RData")
 
 sessionInfo()
 ```
@@ -23,6 +27,17 @@ sessionInfo()
 #Define functions
 
 ```{r}
+KL <- function(x,bg){ 
+    x <- x/sum(x)
+    bg <- bg/sum(bg)
+    sum(x*log(x/bg),na.rm = T)
+}
+
+Ent <- function(x){
+    x <- x/sum(x)
+    -sum(x*log(x),na.rm = T)
+}
+
 reorder_mat <- function(mat, rate = 0.1) {
   N_row <- as.integer(nrow(mat) * rate)
   x <- 1:nrow(mat)
@@ -76,7 +91,8 @@ SIM2 <-
            remove_protein = T,
            FDR = 0.01,
            reorder_rate = 0.1,
-           threegroup = T,
+           ED_knee = T,
+           run=T,
            ...) {
     if (remove_protein) {
       protein <- grep(pattern = "TotalSeqB", x = rownames(dat))
@@ -90,15 +106,21 @@ SIM2 <-
              brank@metadata$inflection,
              brank$inflection)
     
+    knee <-
+      ifelse(is.null(brank$knee),
+             brank@metadata$knee,
+             brank$knee)
+        
     ###background barcodes
     if (is.null(dat_bg)) {
-      dat_bg <- SIM_bg(dat, threshold = threshold)
+      dat_bg <- SIMFUN_bg(dat, threshold = threshold)
     }
     
     all_bg <- sum(Matrix::colSums(dat) %in% 1:inflection)
     th_bg <- sum(Matrix::colSums(dat) %in% (threshold + 1):inflection)
     
     dat_true1 <- dat[, Matrix::colSums(dat) > inflection]
+    dat_knee <- dat[, Matrix::colSums(dat) >= knee]
     
     TP_CB2 <- matrix(0, 6, n + 1)
     colnames(TP_CB2) <- c(paste0("rep", 1:n), "Ave")
@@ -116,6 +138,24 @@ SIM2 <-
     
     TP_ED <- TP_CB2
     FP_ED <- FP_CB2
+
+    Size <- matrix(NA,3,n+1)
+    rownames(Size) <- c("G1","G2", "G3")
+    colnames(Size) <- c(1:n, "Average")
+    
+    KL_Diver <- Size
+    Entropy <- Size
+    
+    prob_bg <- edgeR::goodTuringProportions(rowSums(dat_bg))[,1]
+    Top5000 <- prob_bg>=sort(prob_bg,decreasing = T)[5000]
+    prob_knee <- edgeR::goodTuringProportions(rowSums(dat_knee))[,1]
+    prob_realbg <- edgeR::goodTuringProportions(
+        rowSums(dat[, Matrix::colSums(dat) <= threshold]))[,1]
+    Top5000_real <- prob_realbg>=sort(prob_realbg,decreasing = T)[5000]
+    KL_knee <- KL(prob_knee[Top5000_real],prob_realbg[Top5000_real])
+    Size_knee <- mean(colSums(dat_knee))
+    Knee_cells <- Size[,1:n]
+
     
     SEED.rep <- as.integer(runif(n, 1, 100000))
     
@@ -131,13 +171,13 @@ SIM2 <-
       colnames(G1) <- paste0("G1_", 1:ncol(G1))
       G1 <- as(G1, "dgCMatrix")
       
-      if (threegroup) {
-        ###2000 G2 middle cells (50% downsampling)
-        G2 <- dat_true1[, sample(ncol(dat_true1), n_middle, replace = T)]
-        G2 <- as(G2, "dgCMatrix")
-        G2 <- downsampleMatrix(G2, 0.5)
-        colnames(G2) <- paste0("G2_", 1:ncol(G2))
-      }
+
+      ###2000 G2 middle cells (50% downsampling)
+      G2 <- dat_true1[, sample(ncol(dat_true1), n_middle, replace = T)]
+      G2 <- as(G2, "dgCMatrix")
+      G2 <- downsampleMatrix(G2, 0.5)
+      colnames(G2) <- paste0("G2_", 1:ncol(G2))
+
       
       ###2000 G3 small cells (10% downsampling)
       G3 <- dat_true1[, sample(ncol(dat_true1), n_small, replace = T)]
@@ -147,25 +187,58 @@ SIM2 <-
       
       if (new_sim) {
         G1 <- reorder_mat(G1, rate = reorder_rate)
-        if (threegroup)
-          G2 <- reorder_mat(G2, rate = reorder_rate)
+        G2 <- reorder_mat(G2, rate = reorder_rate)
         G3 <- reorder_mat(G3, rate = reorder_rate)
       }
-
-      if (threegroup) {
-        dat_sim1 <- cbind(dat_bg, G1, G2, G3)
-      } else{
-        dat_sim1 <- cbind(dat_bg, G1, G3)
-      }
       
+      Size[1,sss] <- mean(colSums(G1))
+      Size[2,sss] <- mean(colSums(G2))
+      Size[3,sss] <- mean(colSums(G3))
       
+      # KL_Diver[1,sss] <- median(apply(G1[Top5000,],2,KL,bg=prob_bg[Top5000]))
+      # KL_Diver[2,sss] <- median(apply(G2[Top5000,],2,KL,bg=prob_bg[Top5000]))
+      # KL_Diver[3,sss] <- median(apply(G3[Top5000,],2,KL,bg=prob_bg[Top5000]))
       
+      KL_Diver[1,sss] <- KL(edgeR::goodTuringProportions(rowSums(G1))[Top5000,1],prob_bg[Top5000])
+      KL_Diver[2,sss] <- KL(edgeR::goodTuringProportions(rowSums(G2))[Top5000,1],prob_bg[Top5000])
+      KL_Diver[3,sss] <- KL(edgeR::goodTuringProportions(rowSums(G3))[Top5000,1],prob_bg[Top5000])
+      
+      # Entropy[1,sss] <- median(apply(G1[Top5000,],2,Ent))
+      # Entropy[2,sss] <- median(apply(G2[Top5000,],2,Ent))
+      # Entropy[3,sss] <- median(apply(G3[Top5000,],2,Ent))
+      
+      Entropy[1,sss] <- Ent(edgeR::goodTuringProportions(rowSums(G1))[Top5000,1])
+      Entropy[2,sss] <- Ent(edgeR::goodTuringProportions(rowSums(G2))[Top5000,1])
+      Entropy[3,sss] <- Ent(edgeR::goodTuringProportions(rowSums(G3))[Top5000,1])
+      
+      dat_sim1 <- cbind(dat_bg, G1, G2, G3)
+    if(run){
+                
       set.seed(SEED.tmp)
-
+      
+      if(ED_knee){
+          retain_temp <- barcodeRanks(dat_sim1,threshold)@metadata$knee
+      }else{
+         Retain <- Calc_retain(dat_sim1, threshold)
+            
+        #check convergence of knee point
+        repeat{
+          retain_temp <- Retain$knee
+          Retain <- Calc_retain(dat_sim1, Retain$inflection + 100)
+          if(Retain$knee==retain_temp) break
+        }
+      }
+        
+      Knee_cell <- colnames(dat_sim1)[colSums(dat_sim1)>=retain_temp]
+      Knee_cells[1,sss] <- sum(Knee_cell%in%colnames(G1))
+      Knee_cells[2,sss] <- sum(Knee_cell%in%colnames(G2))
+      Knee_cells[3,sss] <- sum(Knee_cell%in%colnames(G3))
+          
+      
       res_CB2 <-
           CB2FindCell(dat_sim1,
-              pooling_threshold = threshold,
-              FDR_threshold = FDR,
+              background_threshold = threshold,
+              FDR_threshold = FDR, retain = retain_temp,
               ...)
 
       res1 <- colnames(GetCellMat(res_CB2))
@@ -185,7 +258,7 @@ SIM2 <-
       FP_CB2[3, sss] <- length(grep(x = res1, pattern = "bg"))
       FP_CB2[4, sss] <- FP_CB2[3, sss] / th_bg
       
-      eOut <- emptyDrops(dat_sim1, lower = threshold)
+      eOut <- emptyDrops(dat_sim1, lower = threshold,retain = retain_temp)
       sim_ED <- dat_sim1[, ifelse(is.na(eOut$FDR), FALSE, eOut$FDR <= FDR)]
       res_ED2 <- colnames(sim_ED)
       
@@ -203,12 +276,27 @@ SIM2 <-
       
       FP_ED[3, sss] <- length(grep(x = res_ED2, pattern = "bg"))
       FP_ED[4, sss] <- FP_ED[3, sss] / th_bg
+      }
     }
     
     TP_CB2[, n + 1] <- rowMeans(TP_CB2[, 1:n])
     TP_ED[, n + 1] <- rowMeans(TP_ED[, 1:n])
     FP_CB2[, n + 1] <- rowMeans(FP_CB2[, 1:n])
     FP_ED[, n + 1] <- rowMeans(FP_ED[, 1:n])
+    
+    TP_CB2_adj <- TP_CB2
+    colnames(TP_CB2_adj)[n+1] <- "Total"
+    TP_ED_adj <- TP_CB2_adj
+    
+    NonKnee_cells <- c(n_large,n_middle,n_small)-Knee_cells
+    TP_CB2_adj[c(1,3,5),1:n] <- TP_CB2[c(1,3,5),1:n]-Knee_cells
+    TP_ED_adj[c(1,3,5),1:n] <- TP_ED[c(1,3,5),1:n]-Knee_cells
+    TP_CB2_adj[c(2,4,6),1:n] <- TP_CB2_adj[c(1,3,5),1:n]/NonKnee_cells
+    TP_ED_adj[c(2,4,6),1:n] <- TP_ED_adj[c(1,3,5),1:n]/NonKnee_cells
+    TP_CB2_adj[c(1,3,5),n+1] <- rowSums(TP_CB2_adj[c(1,3,5),1:n])
+    TP_ED_adj[c(1,3,5),n+1] <- rowSums(TP_ED_adj[c(1,3,5),1:n])
+    TP_CB2_adj[c(2,4,6),n+1] <- TP_CB2_adj[c(1,3,5),n+1]/rowSums(NonKnee_cells)
+    TP_ED_adj[c(2,4,6),n+1] <- TP_ED_adj[c(1,3,5),n+1]/rowSums(NonKnee_cells)
     
     Stat <- matrix(NA, 2, 2)
     colnames(Stat) <- c("CB2", "ED")
@@ -223,6 +311,18 @@ SIM2 <-
       FP_ED[3, n + 1] / (FP_ED[3, n + 1] + Stat[1, 2] * (n_large + n_middle + n_small))
     Power_diff <- Stat[1, 1] - Stat[1, 2]
     
+    
+    Stat_adj <- Stat
+    Stat_adj[1,1] <- sum(TP_CB2_adj[c(1,3,5),n+1])/sum(NonKnee_cells)
+    Stat_adj[1,2] <- sum(TP_ED_adj[c(1,3,5),n+1])/sum(NonKnee_cells)
+    
+    Power_diff_adj <- Stat_adj[1, 1] - Stat_adj[1, 2]
+    
+    Size[,n+1] <- rowMeans(Size[,1:n])
+    KL_Diver[,n+1] <- rowMeans(KL_Diver[,1:n])
+    Entropy[,n+1] <- rowMeans(Entropy[,1:n])
+
+    
     return(
       list(
         TP_CB2 = TP_CB2,
@@ -230,72 +330,126 @@ SIM2 <-
         TP_ED = TP_ED,
         FP_ED = FP_ED,
         Stat = Stat,
-        Power_diff = Power_diff
+        Power_diff = Power_diff,
+        TP_CB2_adj = TP_CB2_adj,
+        TP_ED_adj = TP_ED_adj,
+        Stat_adj = Stat_adj,
+        Power_diff_adj = Power_diff_adj,
+        NonKnee_cells = NonKnee_cells,
+        Size=Size,
+        KL_Diver=KL_Diver,
+        Entropy=Entropy,
+        Size_knee=Size_knee,
+        KL_knee=KL_knee,
+        session=sessionInfo()
       )
     )
-  }
+}
+
+
+#Calculate knee point of a dataset
+#Note: This function is a modified version of barcodeRanks() in 
+#package DropletUtils. We fixed a minor bug causing returned knee point
+#being larger than actual knee point. We also moved the smooth spline fitting
+#to the beginning to avoid unstable knee point estimation when lower threshold
+#changes. For its origin, see 
+#https://github.com/MarioniLab/DropletUtils/blob/master/R/barcodeRanks.R
+Calc_retain <- function(dat,lower){
+    dat <- FilterGB(dat)
+    totals <- unname(colSums(dat))
+    o <- order(totals, decreasing=TRUE)
+
+    stuff <- rle(totals[o])
+    run.rank <- cumsum(stuff$lengths) - (stuff$lengths-1)/2 # Get mid-rank of each run.
+    run.totals <- stuff$values
+
+
+    keep <- run.totals > lower
+    if (sum(keep)<3) { 
+        warning("insufficient unique points for computing knee/inflection points")
+        return(NULL)
+    }
+    y <- log10(run.totals[keep])
+    x <- log10(run.rank[keep])
+    fit <- smooth.spline(log10(run.rank), log10(run.totals), df=20)
+# Numerical differentiation to identify bounds for spline fitting.
+# The upper/lower bounds are defined at the plateau and inflection, respectively.
+    d1n <- diff(y)/diff(x)
+    right.edge <- which.min(d1n)
+    left.edge <- which.max(d1n[seq_len(right.edge)])
+# We restrict to this region, thereby simplifying the shape of the curve.
+# This allows us to get a decent fit with low df for stable differentiation.
+    new.keep <- left.edge:right.edge
+# Smoothing to avoid error multiplication upon differentiation.
+# Minimizing the signed curvature and returning the total for the knee point.
+    d1 <- predict(fit, deriv=1)$y[keep][new.keep]
+    d2 <- predict(fit, deriv=2)$y[keep][new.keep]
+    curvature <- d2/(1 + d1^2)^1.5
+    knee <- 10^(y[new.keep][which.min(curvature)])
+    inflection <- 10^(y[right.edge])
+    return(list(knee=knee,inflection=inflection))
+}
 
 ```
 
 #Run simulation under easy setting
 
-Under easy setting, part of genes in real cells are shuffled so that they are more different from background, making them easier to be tested out.
+Under easy setting, part of genes in real cells are shuffled so that they are more different from background, making them easier to be tested out. Set `new_sim=T`.
 
-```{r}
-set.seed(SEED)
-MALT_SIM <- SIM2(dat = MALT_r,dat_bg = MALT_bg, new_sim = T,Ncores=4)
-
-set.seed(SEED)
-mbrain_SIM <- SIM2(dat = mbrain_r,dat_bg = mbrain_bg, new_sim = T,Ncores=4)
-
-set.seed(SEED)
-PBMC1K_SIM <- SIM2(dat = PBMC1K_r,dat_bg = PBMC1K_bg,new_sim = T,Ncores=4)
-
-set.seed(SEED)
-PBMC68K_SIM <- SIM2(dat = PBMC_r,dat_bg = PBMC_bg,new_sim = T,Ncores=4)
-
-set.seed(SEED)
-UW_SIM <- SIM2(dat = UW_r,dat_bg = UW_bg,new_sim = T,Ncores=4)
-
-set.seed(SEED)
-PBMC8K_SIM <- SIM2(dat = PBMC8K_r,dat_bg = PBMC8K_bg,new_sim = T,Ncores=4)
-
-save(MALT_SIM,mbrain_SIM,PBMC1K_SIM,PBMC68K_SIM,PBMC8K_SIM,UW_SIM,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_newSim_scCB2.RData")
-```
 
 #Run simulation under hard setting (no shuffling genes)
 
-Under hard setting, genes in simulated real cells are not shuffled. This is closer to real world. 
+Under hard setting, genes in simulated real cells are not shuffled. This is closer to real world. Set `new_sim=F`.
+
 
 ```{r}
+
+######################
 set.seed(SEED)
-MALT_SIM <- SIM2(dat = MALT_r,dat_bg = MALT_bg, new_sim = F,Ncores=4)
+mbrain_SIM <- SIM2(dat = mbrain_r, ED_knee = T,new_sim = T,Ncores=6)
 
 set.seed(SEED)
-mbrain_SIM <- SIM2(dat = mbrain_r,dat_bg = mbrain_bg, new_sim = F,Ncores=4)
+MALT_SIM <- SIM2(dat = MALT_r, ED_knee = T,new_sim = T,Ncores=6)
 
 set.seed(SEED)
-PBMC1K_SIM <- SIM2(dat = PBMC1K_r,dat_bg = PBMC1K_bg,new_sim = F,Ncores=4)
+PBMC8K_SIM <- SIM2(dat = PBMC8K_r,ED_knee = T,new_sim = T,Ncores=6)
 
 set.seed(SEED)
-PBMC68K_SIM <- SIM2(dat = PBMC_r,dat_bg = PBMC_bg,new_sim = F,Ncores=4)
+mbrain1K_SIM <- SIM2(dat = mbrain1K_r,ED_knee = T,new_sim = T,Ncores=6)
 
 set.seed(SEED)
-UW_SIM <- SIM2(dat = UW_r,dat_bg = UW_bg,new_sim = F,Ncores=4)
+Alz_SIM <- SIM2(dat = Alz_r,ED_knee = T,new_sim = T,Ncores=6)
 
 set.seed(SEED)
-PBMC8K_SIM <- SIM2(dat = PBMC8K_r,dat_bg = PBMC8K_bg,new_sim = F,Ncores=4)
+T293_SIM <- SIM2(dat = T293_r,ED_knee = T,new_sim = T,Ncores=6)
 
-save(MALT_SIM,mbrain_SIM,PBMC1K_SIM,PBMC68K_SIM,UW_SIM,PBMC8K_SIM,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_oldSim_scCB2.RData")
+set.seed(SEED)
+PBMC4K_SIM <- SIM2(dat = PBMC4K_r,ED_knee = T,new_sim = T,Ncores=6)
+
+set.seed(SEED)
+jurkat_SIM <- SIM2(dat = jurkat_r,ED_knee = T,new_sim = T,Ncores=6)
+
+set.seed(SEED)
+PanT4K_SIM <- SIM2(dat = PanT4K_r,ED_knee = T,new_sim = T,Ncores=6)
+
+set.seed(SEED)
+PBMC33K_SIM <- SIM2(dat = PBMC33K_r,ED_knee = T,new_sim = T,Ncores=6)
+
+save(MALT_SIM,mbrain_SIM,mbrain1K_SIM,PBMC33K_SIM, PBMC4K_SIM,PBMC8K_SIM,Alz_SIM,
+     T293_SIM,jurkat_SIM,PanT4K_SIM,
+     file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_10_3_new.RData")
+
+
+
 ```
 
 
 
 ##plot
 ```{r}
-load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_oldSim_scCB2.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_10_3_new.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_10_3_old.RData")
 
-#load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_7_20_cor_newSim_scCB2.RData")
 
 library(ggplot2)
 RED <- "#FF9999"
@@ -304,12 +458,57 @@ GREEN <- "#009E73"
 YELLOW <- "#F0E442"
 
 Res_list <- list()
-Res_list[[1]] <- MALT_SIM
-Res_list[[2]] <- mbrain_SIM
-Res_list[[3]] <- PBMC1K_SIM
-Res_list[[4]] <- PBMC68K_SIM
-Res_list[[5]] <- PBMC8K_SIM
-Res_list[[6]] <- UW_SIM
+Res_list[[1]] <- Alz_SIM
+Res_list[[2]] <- jurkat_SIM
+Res_list[[3]] <- MALT_SIM
+Res_list[[4]] <- mbrain_SIM
+Res_list[[5]] <- mbrain1K_SIM
+Res_list[[6]] <- PanT4K_SIM
+Res_list[[7]] <- PBMC33K_SIM
+Res_list[[8]] <- PBMC4K_SIM
+Res_list[[9]] <- PBMC8K_SIM
+Res_list[[10]] <- T293_SIM
+
+
+
+P_diff <- lapply(Res_list,function(x) x$TP_CB2[c(2,4,6),6]-x$TP_ED[c(2,4,6),6])
+
+Size <- lapply(Res_list,function(x) x$Size[,6])
+KL_D <- lapply(Res_list,function(x) x$KL_Diver[,6])
+
+Size_knee <- unlist(lapply(Res_list,function(x) x$Size_knee))
+KL_knee <- unlist(lapply(Res_list,function(x) x$KL_knee))
+
+ENT <- lapply(Res_list,function(x) x$Ent[,6])
+Meta <- data.frame(P_diff=unlist(P_diff),Size=unlist(Size),KL_D=unlist(KL_D),ENT=unlist(ENT))
+
+# plot(Meta)
+# summary(lm1 <- lm(P_diff~Size:KL_D,data=Meta))
+
+
+Meta1 <- Meta[1:10,]
+for(i in 1:10){
+    Meta1[i,] <- colMeans(Meta[i*3-2:0,])
+}
+
+NM <- c("Alz","jurkat","MALT","mbrain9K","mbrain1K","PanT4K","PBMC33K","PBMC4K","PBMC8K","T293")
+Meta$Data <- rep(NM,each=3)
+Meta$Group <- rep(c("G1","G1.5","G2"),10)
+
+
+plot(Size~KL_D,data=Meta1)
+#points(Meta1$Size[c(4,6,8)]~Meta1$KL_D[c(4,6,8)],col="red")
+text(Size ~KL_D, labels=NM,data=Meta1, cex=0.9, font=2)
+
+####knee point large cells
+plot(Size_knee~KL_knee)
+#points(Meta1$Size[c(4,6,8)]~Meta1$KL_D[c(4,6,8)],col="red")
+text(Size_knee~KL_knee, labels=NM, cex=0.9, font=2)
+
+####G1
+plot(Meta[1:9*3-2,]$Size~Meta[1:9*3-2,]$KL_D)
+#points(Meta1$Size[c(4,6,8)]~Meta1$KL_D[c(4,6,8)],col="red")
+text(Meta[1:9*3-2,]$Size~Meta[1:9*3-2,]$KL_D, labels=NM, cex=0.9, font=2)
 
 G1E <- unlist(lapply(Res_list,function(x) x$TP_CB2[2,ncol(x$TP_CB2)]))
 G1ED <- unlist(lapply(Res_list,function(x) x$TP_ED[2,ncol(x$TP_ED)]))
@@ -321,10 +520,16 @@ FDR_E <- unlist(lapply(Res_list,function(x) x$Stat[2,1]))
 FDR_ED <- unlist(lapply(Res_list,function(x) x$Stat[2,2]))
 Power_Inc <- unlist(lapply(Res_list,function(x) x$Power_diff))
 
+G1E <- unlist(lapply(Res_list,function(x) x$TP_CB2_adj[2,ncol(x$TP_CB2_adj)]))
+G1ED <- unlist(lapply(Res_list,function(x) x$TP_ED_adj[2,ncol(x$TP_ED_adj)]))
+G2E <- unlist(lapply(Res_list,function(x) x$TP_CB2_adj[4,ncol(x$TP_CB2_adj)]))
+G2ED <- unlist(lapply(Res_list,function(x) x$TP_ED_adj[4,ncol(x$TP_ED_adj)]))
+G3E <- unlist(lapply(Res_list,function(x) x$TP_CB2_adj[6,ncol(x$TP_CB2_adj)]))
+G3ED <- unlist(lapply(Res_list,function(x) x$TP_ED_adj[6,ncol(x$TP_ED_adj)]))
+FDR_E <- unlist(lapply(Res_list,function(x) x$Stat_adj[2,1]))
+FDR_ED <- unlist(lapply(Res_list,function(x) x$Stat_adj[2,2]))
+Power_Inc <- unlist(lapply(Res_list,function(x) x$Power_diff_adj))
 
-
-NM <- c("MALT","mbrain")
-NM <- c("MALT","mbrain","PBMC1K","PBMC68K","PBMC8K","UW")
 
 plot(rep(2,length(NM))~factor(NM),ylim=c(0,1),ylab="power",xlab=NULL)
 lines(G1E~factor(NM),col=RED)
@@ -333,7 +538,7 @@ lines(G2E~factor(NM),col=RED,lty=2)
 lines(G2ED~factor(NM),col=GREEN,lty=2)
 lines(G3E~factor(NM),col=RED,lty=3)
 lines(G3ED~factor(NM),col=GREEN,lty=3)
-legend(2,0.3,lty=c(1,1,1,2,3),col=c(RED,GREEN,"black","black","black"),legend=c("CB2","EmptyDrops","G1 (large)","G2 (medium)","G3 (small)"),cex = 0.7)
+legend("bottomleft",lty=c(1,1,1,2,3),col=c(RED,GREEN,"black","black","black"),legend=c("CB2","EmptyDrops","G1 (large)","G1.5 (medium)","G2 (small)"),cex = 0.7)
 
 plot(rep(200,length(NM))~factor(NM),ylim=range(Power_Inc)*100,ylab="power diff (%) (CB2 - ED)",xlab=NULL)
 lines(Power_Inc*100~factor(NM),col=RED)
@@ -352,21 +557,84 @@ legend("topright",lty=1,col=c(RED,GREEN),legend=c("CB2","EmptyDrops"))
 #Extra functions for drawing plots in CB2 paper
 ```{r}
 #str(G1E)
-sim_plot <- data.frame(Power=c(G1E,G1ED,G2E,G2ED,G3E,G3ED),Group=rep(c("G1","G2","G3"),each=12),
-                       Method=rep(rep(c("CB2","EmptyDrops"),each=6),3),Dataset=rep(NM,6))
-FDR_plot <- data.frame(FDR=c(FDR_E,FDR_ED),Dataset=NM,Method=rep(c("CB2","EmptyDrops"),each=6))
-ggplot(data=FDR_plot,aes(y=FDR*100,x=Dataset))+geom_col(aes(fill=Method),position="dodge")+geom_hline(yintercept = 1,linetype="dashed")+ylab("FDR (%)")+ylim(c(0,2))+labs(title="FDR")+
-  scale_x_discrete(limits=sort(NM,decreasing = T))+coord_flip()
+NM_order <- c("mbrain1K","T293","jurkat","PanT4K","MALT","PBMC4K","mbrain9K","Alz","PBMC8K","PBMC33K")
 
-temp <- "MALT"
-temp_plot <- sim_plot[sim_plot$Dataset==temp,]
-ggplot(data=temp_plot,aes(y=Power,x=Group))+geom_col(aes(fill=Method),position="dodge")+
-  labs(title=temp)+ylim(0,1)
+sim_plot <- data.frame(Power=c(G1E,G1ED,G2E,G2ED,G3E,G3ED),Group=rep(c("G1","G1.5","G2"),each=20), Method=rep(rep(c("CB2","EmptyDrops"),each=10),3),Dataset=rep(NM,6))
+
+FDR_plot <- data.frame(FDR=c(FDR_E,FDR_ED),Dataset=NM,Method=rep(c("CB2","EmptyDrops"),each=10))
+
+
+ tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/FDR_new.tif",width=9,height=12,units="cm",res=300, compression = "lzw")
+ggplot(data=FDR_plot,aes(y=FDR*100,x=Dataset))+geom_col(aes(fill=Method),position="dodge")+geom_hline(yintercept = 1,linetype="dashed")+ylab("FDR (%)")+ylim(c(0,2))+labs(title="FDR")+
+  scale_x_discrete(limits=rev(NM_order))+coord_flip()
+dev.off()
+
+for(temp in NM){
+    temp_plot <- sim_plot[sim_plot$Dataset==temp,]
+    fname <- paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Power_new_",temp,".tif")
+    tiff(filename =fname,width=7,height=12,units="cm",res=300, compression = "lzw")
+    gp <- ggplot(data=temp_plot,aes(y=Power,x=Group))+geom_col(aes(fill=Method),position="dodge")+labs(title=temp)+ylim(0,1)+ theme(plot.title = element_text(size=12))
+    print(gp)
+    dev.off()
+}
+
 
 ```
 
 
 
+Final KL v.s. Size plot
+```{r}
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_10_3_new.RData")
+
+NM <- c("Alz","jurkat","MALT","mbrain9K","mbrain1K","PanT4K","PBMC33K","PBMC4K","PBMC8K","T293")
+
+Res_list <- list()
+Res_list[[1]] <- Alz_SIM
+Res_list[[2]] <- jurkat_SIM
+Res_list[[3]] <- MALT_SIM
+Res_list[[4]] <- mbrain_SIM
+Res_list[[5]] <- mbrain1K_SIM
+Res_list[[6]] <- PanT4K_SIM
+Res_list[[7]] <- PBMC33K_SIM
+Res_list[[8]] <- PBMC4K_SIM
+Res_list[[9]] <- PBMC8K_SIM
+Res_list[[10]] <- T293_SIM
+
+Size_new <- unlist(lapply(Res_list,function(x) mean(x$Size[,6])))
+KL_new <- unlist(lapply(Res_list,function(x) mean(x$KL_Diver[,6])))
+
+Size_knee <- unlist(lapply(Res_list,function(x) x$Size_knee))
+KL_real <- unlist(lapply(Res_list,function(x) x$KL_knee))
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_10_3_old.RData")
 
 
+Res_list <- list()
+Res_list[[1]] <- Alz_SIM
+Res_list[[2]] <- jurkat_SIM
+Res_list[[3]] <- MALT_SIM
+Res_list[[4]] <- mbrain_SIM
+Res_list[[5]] <- mbrain1K_SIM
+Res_list[[6]] <- PanT4K_SIM
+Res_list[[7]] <- PBMC33K_SIM
+Res_list[[8]] <- PBMC4K_SIM
+Res_list[[9]] <- PBMC8K_SIM
+Res_list[[10]] <- T293_SIM
+
+Size_old <- unlist(lapply(Res_list,function(x) mean(x$Size[,6])))
+KL_old <- unlist(lapply(Res_list,function(x) mean(x$KL_Diver[,6])))
+
+KLS <- data.frame(name=NM,KL_new=KL_new,KL_old=KL_old,KL_real=KL_real,
+                  Size_new=Size_new,Size_old=Size_old,Size_knee=Size_knee)
+
+ tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/KL.tif",width=50,height=10,units="cm",res=300, compression = "lzw")
+
+gp <- ggplot(data=KLS) + xlim(c(0,0.35))+ geom_text(aes(x=KL_new,y=Size_new,label=paste0(name,".IB"),color=name),hjust=0.5, vjust=0.5,size=3) + geom_text(aes(x=KL_old,y=Size_old,label=paste0(name,".IA"),color=name),hjust=0.5, vjust=0.5,size=3)  + xlab("KL divergence") + ylab("Size") + geom_vline(aes(xintercept=KL_real,color=name),linetype="dashed")+ theme_bw() + theme(legend.position="none", panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+print(gp)
+dev.off()
+
+```
 
