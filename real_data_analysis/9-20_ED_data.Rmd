@@ -1,0 +1,438 @@
+---
+title: "8-22"
+author: "Zijian Ni"
+output: html_document
+---
+
+mbrain1K + placenta #1
+
+
+```{r,warning=F,message=F,echo=F}
+SEED=2019
+RED="#FF9999"
+BLUE="#56B4E9"
+GREEN="#009E73"
+YELLOW="#F0E442"
+library(scCB2)
+suppressMessages(library(DropletUtils))
+library(ggplot2)
+library(Rtsne)
+suppressMessages(library(dendextend))
+suppressMessages(library(Matrix))
+library(grid)
+suppressMessages(library(edgeR))
+library(reshape2)
+suppressMessages(library(gplots))
+library(scran)
+library(irlba)
+library(scater)
+library(enrichR)
+library(Seurat)
+
+source("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/functions_forReal.R")
+
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/mbrain1K.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/placenta.RData")
+
+# plot(sort(colSums(mbrain1K_r),decreasing = T),type="l",log="xy",ylab="UMI counts",xlab="Barcodes", xaxt="n",yaxt="n")
+# axis(1, at=10^(0:4), labels=c(10^(0:4)))
+# axis(2, at=10^(0:4), labels=c(10^(0:4)))
+# abline(h=10^(0:5), v=10^(0:5), col="gray", lty=3)
+
+
+mbrain1K_knee <- barcodeRanks(mbrain1K_r,lower = 100)@metadata$knee #7185
+placenta_knee <- barcodeRanks(placenta_r,lower = 100)@metadata$knee #5043
+```
+
+
+##CB2+ED
+```{r, echo=F}
+# set.seed(SEED)
+# placenta_CB2Out <- CB2FindCell(placenta_r,retain = placenta_knee)
+# set.seed(SEED)
+# eOut <- emptyDrops(placenta_r,retain = placenta_knee, lower=100)
+# placenta_ED <- placenta_r[,ifelse(is.na(eOut$FDR),FALSE,eOut$FDR<=0.01)]
+# 
+# save(placenta_ED,placenta_CB2Out,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/placenta_CB2_ED.RData")
+
+#save(mbrain1K_ED,mbrain1K_CB2Out,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/mbrain1K_CB2_ED.RData")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/placenta_CB2_ED.RData")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/mbrain1K_CB2_ED.RData")
+
+mbrain1K_CB2 <- GetCellMat(mbrain1K_CB2Out)
+placenta_CB2 <- GetCellMat(placenta_CB2Out)
+```
+
+##Unique Cells in mbrain1K
+
+```{r,echo=F}
+cat("Compare between CB2 and ED\n")
+
+cat("Whole result comparison: \n")
+diff_mbrain1K <- barcode_diff(mbrain1K_CB2,mbrain1K_ED)
+cat("below knee point comparison: \n")
+diff_mbrain1K_knee <- barcode_diff(mbrain1K_CB2[,Matrix::colSums(mbrain1K_CB2)<mbrain1K_knee],mbrain1K_ED[,Matrix::colSums(mbrain1K_ED)<mbrain1K_knee])
+cat("Total count <200 comparison: \n")
+diff_mbrain1K_2 <- barcode_diff(mbrain1K_CB2[,Matrix::colSums(mbrain1K_CB2)<200],mbrain1K_ED[,Matrix::colSums(mbrain1K_ED)<200])
+```
+
+##Unique Cells in placenta
+
+```{r,echo=F}
+cat("Compare between CB2 and ED\n")
+
+cat("Whole result comparison: \n")
+diff_placenta <- barcode_diff(placenta_CB2,placenta_ED)
+cat("below knee point comparison: \n")
+diff_placenta_knee <- barcode_diff(placenta_CB2[,Matrix::colSums(placenta_CB2)<placenta_knee],placenta_ED[,Matrix::colSums(placenta_ED)<placenta_knee])
+cat("Total count <200 comparison: \n")
+diff_placenta_2 <- barcode_diff(placenta_CB2[,Matrix::colSums(placenta_CB2)<200],placenta_ED[,Matrix::colSums(placenta_ED)<200])
+```
+
+
+
+
+
+##normalization
+```{r,echo=F}
+# Ent_mat1 <- placenta_r[,diff_placenta$CB2_only]
+# 
+# com_mat1 <- placenta_r[,diff_placenta$Common_b]
+# 
+# ED_mat1 <- placenta_r[,diff_placenta$ED_only]
+# 
+# 
+# set.seed(SEED)
+# sce <- SingleCellExperiment(list(counts=cbind(Ent_mat1,com_mat1,ED_mat1)))
+# clusters <- quickCluster(sce, min.size=100)
+# sce <- computeSumFactors(sce, cluster=clusters)
+# sce <- normalize(sce)
+# 
+# placenta_f <- sce@assays$data$logcounts
+# str(placenta_f)
+# colnames(placenta_f) <- colnames(sce@assays$data$counts)
+# rownames(placenta_f) <- rownames(sce@assays$data$counts)
+# 
+#save(placenta_f,file="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/placenta_f.RData")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/placenta_f.RData")
+
+
+# Ent_mat1 <- mbrain1K_r[,diff_mbrain1K$CB2_only]
+# 
+# com_mat1 <- mbrain1K_r[,diff_mbrain1K$Common_b]
+# 
+# ED_mat1 <- mbrain1K_r[,diff_mbrain1K$ED_only]
+# 
+# 
+# set.seed(SEED)
+# sce <- SingleCellExperiment(list(counts=(cbind(Ent_mat1,com_mat1,ED_mat1))))
+# clusters <- quickCluster(sce, min.size=100)
+# sce <- computeSumFactors(sce, cluster=clusters)
+# sce <- normalize(sce)
+# 
+# mbrain1K_f <- sce@assays$data$logcounts
+# str(mbrain1K_f)
+# colnames(mbrain1K_f) <- colnames(sce@assays$data$counts)
+# rownames(mbrain1K_f) <- rownames(sce@assays$data$counts)
+# 
+#save(mbrain1K_f,file="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/mbrain1K_f.RData")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/mbrain1K_f.RData")
+
+```
+
+
+
+
+
+##mbrain1K
+
+```{r,warning=F,message=F,echo=F}
+Ent_mat1 <- mbrain1K_f[,diff_mbrain1K$CB2_only[diff_mbrain1K$CB2_only%in%colnames(mbrain1K_f)]]
+
+com_mat1 <- mbrain1K_f[,diff_mbrain1K$Common_b[diff_mbrain1K$Common_b%in%colnames(mbrain1K_f)]]
+
+ED_mat1 <- mbrain1K_f[,diff_mbrain1K$ED_only[diff_mbrain1K$ED_only%in%colnames(mbrain1K_f)]]
+
+mbrain1K_S <- CreateSeuratObject(counts = cbind(com_mat1,Ent_mat1,ED_mat1), project = "mbrain1K")
+set.seed(SEED)
+mbrain1K_S <- FindVariableFeatures(mbrain1K_S, selection.method = "vst", nfeatures = 4000)
+#str(VariableFeatures(mbrain1K_S))
+all.genes <- rownames(mbrain1K_S)
+mbrain1K_S <- ScaleData(mbrain1K_S, features = all.genes)
+mbrain1K_S <- RunPCA(mbrain1K_S, features = VariableFeatures(object = mbrain1K_S))
+mbrain1K_S <- FindNeighbors(mbrain1K_S, dims = 1:50)
+mbrain1K_S <- FindClusters(mbrain1K_S, resolution = 0.5)
+set.seed(SEED)
+mbrain1K_S <- RunTSNE(mbrain1K_S, dims = 1:50)
+DimPlot(mbrain1K_S, reduction = "tsne")
+str(mbrain1K_S$seurat_clusters)
+str(mbrain1K_S@reductions$tsne@cell.embeddings)
+
+
+# set.seed(SEED)
+# mbrain1K_tsne_n <- run_tsne(cbind(com_mat1,Ent_mat1,ED_mat1),30,F)
+# save(mbrain1K_tsne_n,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/mbrain1K_tsne_n.RData")
+# load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/mbrain1K_tsne_n.RData")
+
+#head(mbrain1K_tsne_n)
+mbrain1K_tsne_n1 <- as.data.frame(mbrain1K_S@reductions$tsne@cell.embeddings)
+mbrain1K_tsne_n1 <- cbind(mbrain1K_tsne_n1,c(rep("Common",dim(com_mat1)[2]),
+                                       rep("CB2_only",dim(Ent_mat1)[2]),
+                                       rep("ED_only",dim(ED_mat1)[2])))
+
+
+colnames(mbrain1K_tsne_n1) <- c("tSNE1","tSNE2","Group")
+mbrain1K_tsne_n1$Group <- as.character(mbrain1K_tsne_n1$Group)
+  
+mbrain1K_knee_bc <- names(which(Matrix::colSums(mbrain1K_CB2)>=mbrain1K_knee))
+mbrain1K_tsne_n1$Group[which(colnames(com_mat1)%in%mbrain1K_knee_bc)] <- "Above_knee_point"
+
+# mbrain1K_tsne_n1$Group1 <- mbrain1K_tsne_n1$Group
+# mbrain1K_tsne_n1$Group1[mbrain1K_tsne_n1$Group1=="Common"] <- "Captured by EmptyDrops"
+# mbrain1K_tsne_n1$Group1[mbrain1K_tsne_n1$Group1=="ED_only"] <- "Captured by EmptyDrops"
+# mbrain1K_tsne_n1$Group1[mbrain1K_tsne_n1$Group1=="CB2_only"] <- "Not captured by EmptyDrops"
+
+
+
+mbrain1K_tsne_n3 <- CB2Cluster(mbrain1K_CB2Out,mbrain1K_tsne_n1,sizeFilter = 0)
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/mbrain1K_tSNE.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+ggplot(mbrain1K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Group),size=0.2)+
+  scale_color_manual(values=c(GREEN,RED,YELLOW,BLUE))+ guides(colour = guide_legend(override.aes = list(size=2)))+ theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+dev.off()
+
+
+ggplot()+geom_point(data=mbrain1K_tsne_n3[mbrain1K_tsne_n3$CB2Cluster=="0",],aes(x=tSNE1,y=tSNE2),size=0.2,color="#cccccc")+geom_point(data=mbrain1K_tsne_n3[mbrain1K_tsne_n3$CB2Cluster!="0",],aes(x=tSNE1,y=tSNE2,color=CB2Cluster),size=0.2)+guides(color=FALSE)
+
+
+
+```
+
+
+###cluster
+```{r}
+mbrain1K_tsne_n1$Cluster <- as.character(mbrain1K_S$seurat_clusters)
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/mbrain1K_Cluster.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+ggplot(mbrain1K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.2)+
+  scale_color_discrete(breaks=unique(mbrain1K_tsne_n1$Cluster))+ guides(colour = guide_legend(override.aes = list(size=2)))+ theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+dev.off()
+
+mk_plot("Ftl1",diff_dat=diff_mbrain1K, dat_tsne_n1 = mbrain1K_tsne_n1, dat_f=mbrain1K_f)  
+
+```
+
+
+clusters
+```{r,echo=F}
+#mbrain1K_Ent <- mbrain1K_tsne_n2[ncol(com_mat1)+1:ncol(Ent_mat1),]
+mbrain1K_sub1 <- mbrain1K_S@assays$RNA@counts[,mbrain1K_tsne_n1$Cluster=="6"] #68, 55 CB2_only
+mbrain1K_sub2 <- mbrain1K_S@assays$RNA@counts[,mbrain1K_tsne_n1$Cluster%in%c("1","2")] #870, 163 CB2_only
+mbrain1K_sub3 <- mbrain1K_S@assays$RNA@counts[,mbrain1K_tsne_n1$Cluster%in%c("8")] #17, 3 CB2_only
+
+sum(colnames(mbrain1K_sub3)%in%colnames(Ent_mat1))
+n1 <- names(sort(Matrix::rowMeans(mbrain1K_sub1),decreasing = T))[1:200]
+n2 <- names(sort(Matrix::rowMeans(mbrain1K_sub2),decreasing = T))[1:200]
+n3 <- names(sort(Matrix::rowMeans(mbrain1K_sub2),decreasing = T))[1:200]
+
+nknee <- names(sort(Matrix::rowMeans(mbrain1K_r[,Matrix::colSums(mbrain1K_r)>=mbrain1K_knee]),decreasing = T))[1:200]
+nbg <- names(sort(Matrix::rowMeans(mbrain1K_r[,Matrix::colSums(mbrain1K_r)<=100]),decreasing = T))[1:500]
+
+setdiff(n2,nknee)
+setdiff(n1,nknee)
+```
+
+
+Distribution plot
+```{r}
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/mbrain1K_C6_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(mbrain1K_r[sort(filter_mr(n1)[1:100]),colnames(mbrain1K_sub1)],"mbrain1K",Plot = "D")
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/mbrain1K_C6_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(mbrain1K_r[sort(filter_mr(n1)[1:100]),colnames(mbrain1K_sub1)],"mbrain1K",Plot = "H")
+dev.off()
+
+Htmap(mbrain1K_r[sort((n2)[1:100]),colnames(mbrain1K_sub2)],"mbrain1K")
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/mbrain1K_C1C2_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(mbrain1K_r[sort((n2)[1:100]),colnames(mbrain1K_sub2)],"mbrain1K", Plot = "D")
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/mbrain1K_C1C2_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(mbrain1K_r[sort((n2)[1:100]),colnames(mbrain1K_sub2)],"mbrain1K", Plot = "H")
+dev.off()
+```
+
+Marker genes
+```{r}
+mk_plot("Hbb-bt",diff_dat=diff_mbrain1K, dat_tsne_n1 = mbrain1K_tsne_n1, dat_f=mbrain1K_f)  
+
+```
+
+
+
+
+
+##placenta
+
+```{r,warning=F,message=F,echo=F}
+Ent_mat1 <- placenta_f[,diff_placenta$CB2_only[diff_placenta$CB2_only%in%colnames(placenta_f)]]
+
+com_mat1 <- placenta_f[,diff_placenta$Common_b[diff_placenta$Common_b%in%colnames(placenta_f)]]
+
+ED_mat1 <- placenta_f[,diff_placenta$ED_only[diff_placenta$ED_only%in%colnames(placenta_f)]]
+
+placenta_S <- CreateSeuratObject(counts = cbind(com_mat1,Ent_mat1,ED_mat1), project = "placenta")
+set.seed(SEED)
+placenta_S <- FindVariableFeatures(placenta_S, selection.method = "vst", nfeatures = 4000)
+#str(VariableFeatures(placenta_S))
+all.genes <- rownames(placenta_S)
+placenta_S <- ScaleData(placenta_S, features = all.genes)
+placenta_S <- RunPCA(placenta_S, features = VariableFeatures(object = placenta_S))
+placenta_S <- FindNeighbors(placenta_S, dims = 1:50)
+placenta_S <- FindClusters(placenta_S, resolution = 0.5)
+set.seed(SEED)
+placenta_S <- RunTSNE(placenta_S, dims = 1:50)
+DimPlot(placenta_S, reduction = "tsne")
+str(placenta_S$seurat_clusters)
+str(placenta_S@reductions$tsne@cell.embeddings)
+
+placenta_tsne_n1 <- as.data.frame(placenta_S@reductions$tsne@cell.embeddings)
+placenta_tsne_n1 <- cbind(placenta_tsne_n1,c(rep("Common",dim(com_mat1)[2]),
+                                       rep("CB2_only",dim(Ent_mat1)[2]),
+                                       rep("ED_only",dim(ED_mat1)[2])))
+
+
+colnames(placenta_tsne_n1) <- c("tSNE1","tSNE2","Group")
+placenta_tsne_n1$Group <- as.character(placenta_tsne_n1$Group)
+  
+placenta_knee_bc <- names(which(Matrix::colSums(placenta_CB2)>=placenta_knee))
+placenta_tsne_n1$Group[which(colnames(com_mat1)%in%placenta_knee_bc)] <- "Above_knee_point"
+
+# placenta_tsne_n1$Group1 <- placenta_tsne_n1$Group
+# placenta_tsne_n1$Group1[placenta_tsne_n1$Group1=="Common"] <- "Captured by EmptyDrops"
+# placenta_tsne_n1$Group1[placenta_tsne_n1$Group1=="ED_only"] <- "Captured by EmptyDrops"
+# placenta_tsne_n1$Group1[placenta_tsne_n1$Group1=="CB2_only"] <- "Not captured by EmptyDrops"
+
+
+
+placenta_tsne_n3 <- CB2Cluster(placenta_CB2Out,placenta_tsne_n1,sizeFilter = 0)
+
+ggplot(placenta_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Group),size=0.2)+
+  scale_color_manual(values=c(GREEN,RED,YELLOW,BLUE))
+
+ggplot()+geom_point(data=placenta_tsne_n3[placenta_tsne_n3$CB2Cluster=="0",],aes(x=tSNE1,y=tSNE2),size=0.2,color="#cccccc")+geom_point(data=placenta_tsne_n3[placenta_tsne_n3$CB2Cluster!="0",],aes(x=tSNE1,y=tSNE2,color=CB2Cluster),size=0.2)+guides(color=FALSE)
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_tSNE.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+ggplot(placenta_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Group),size=0.2)+
+  scale_color_manual(values=c(GREEN,RED,YELLOW,BLUE))+ guides(colour = guide_legend(override.aes = list(size=2)))+ theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+dev.off()
+
+```
+
+cluster
+```{r}
+placenta_tsne_n1$Cluster <- as.character(placenta_S$seurat_clusters)
+
+ggplot(placenta_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.2)+
+  scale_color_discrete(breaks=unique(placenta_tsne_n1$Cluster))
+
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_Cluster.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+ggplot(placenta_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.2)+
+  scale_color_discrete(breaks=unique(placenta_tsne_n1$Cluster))+ guides(colour = guide_legend(override.aes = list(size=2)))+ theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+dev.off()
+
+
+mk_plot("LFNG",diff_dat=diff_placenta, dat_tsne_n1 = placenta_tsne_n1, dat_f=placenta_f)  
+```
+
+
+```{r}
+C1 <- rownames(placenta_tsne_n1)[check_range(placenta_tsne_n1$tSNE1,10,18.75) & check_range(placenta_tsne_n1$tSNE2,2,8)]   #Corresponding C14in tSNE plot
+
+placenta_sub1 <- placenta_S@assays$RNA@counts[,C1] #117, 115 CB2 only
+placenta_sub2 <- placenta_S@assays$RNA@counts[,placenta_tsne_n1$Cluster=="6"] #374, 198 CB2 only
+placenta_sub3 <- placenta_S@assays$RNA@counts[,placenta_tsne_n1$Cluster=="11"] #327, 193 CB2 only
+placenta_sub4 <- placenta_S@assays$RNA@counts[,placenta_tsne_n1$Cluster=="12"] #243, 32 CB2 only
+
+placenta_bg <- placenta_r[,colSums(placenta_r)%in%1:100]
+
+
+
+n1 <- names(sort(Matrix::rowMeans(placenta_sub1),decreasing = T)[1:500] )
+n2 <- names(sort(Matrix::rowMeans(placenta_sub2),decreasing = T)[1:500] )
+n3 <- names(sort(Matrix::rowMeans(placenta_sub3),decreasing = T)[1:500] )
+n4 <- names(sort(Matrix::rowMeans(placenta_sub4),decreasing = T)[1:500] )
+
+nbg <- names(sort(Matrix::rowMeans(placenta_r[,Matrix::colSums(placenta_r)<=100]),decreasing = T))[1:500]
+
+```
+
+distribution plot
+```{r}
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C14_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub1)],"placenta", Plot = "D")
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C14_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub1)],"placenta", Plot = "H")
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C6_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(placenta_r[sort(filter_mr(n2)[1:100]),colnames(placenta_sub2)],"placenta", Plot = "D")
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C6_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(placenta_r[sort(filter_mr(n2)[1:100]),colnames(placenta_sub2)],"placenta", Plot = "H")
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C11_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub3)],"placenta", Plot = "D")
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C11_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub3)],"placenta", Plot = "H")
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C12_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub4)],"placenta", Plot = "D")
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C12_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub4)],"placenta", Plot = "H")
+dev.off()
+
+Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub1)],"placenta")
+Htmap(placenta_r[sort(filter_mr(n2)[1:100]),colnames(placenta_sub2)],"placenta")
+Htmap(placenta_r[sort(filter_mr(n3)[1:100]),colnames(placenta_sub3)],"placenta")
+Htmap(placenta_r[sort(filter_mr(n4)[1:100]),colnames(placenta_sub4)],"placenta")
+
+mk_plot("KISS1",diff_dat=diff_placenta, dat_tsne_n1 = placenta_tsne_n1, dat_f=placenta_f,colorUp = T)  
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_KISS1.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+mk_plot("KISS1",diff_dat=diff_placenta, dat_tsne_n1 = placenta_tsne_n1, dat_f=placenta_f,colorUp = T)  
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_CSH1.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+mk_plot("CSH1",diff_dat=diff_placenta, dat_tsne_n1 = placenta_tsne_n1, dat_f=placenta_f,colorUp = T)  
+dev.off()
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_CSH2.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+mk_plot("CSH2",diff_dat=diff_placenta, dat_tsne_n1 = placenta_tsne_n1, dat_f=placenta_f,colorUp = T)  
+dev.off()
+```
+
