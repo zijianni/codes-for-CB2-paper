@@ -49,9 +49,9 @@ placenta_knee <- barcodeRanks(placenta_r,lower = 100)@metadata$knee #5043
 ##CB2+ED
 ```{r, echo=F}
 # set.seed(SEED)
-# placenta_CB2Out <- CB2FindCell(placenta_r,retain = placenta_knee)
+# placenta_CB2Out <- CB2FindCell(placenta_r,upper = placenta_knee)
 # set.seed(SEED)
-# eOut <- emptyDrops(placenta_r,retain = placenta_knee, lower=100)
+# eOut <- emptyDrops(placenta_r,upper = placenta_knee, lower=100)
 # placenta_ED <- placenta_r[,ifelse(is.na(eOut$FDR),FALSE,eOut$FDR<=0.01)]
 # 
 # save(placenta_ED,placenta_CB2Out,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/placenta_CB2_ED.RData")

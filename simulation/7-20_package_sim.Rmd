@@ -217,19 +217,19 @@ SIM2 <-
       set.seed(SEED.tmp)
       
       if(ED_knee){
-          retain_temp <- barcodeRanks(dat_sim1,threshold)@metadata$knee
+          upper_temp <- barcodeRanks(dat_sim1,threshold)@metadata$knee
       }else{
-         Retain <- Calc_retain(dat_sim1, threshold)
+         Upper <- Calc_upper(dat_sim1, threshold)
             
         #check convergence of knee point
         repeat{
-          retain_temp <- Retain$knee
-          Retain <- Calc_retain(dat_sim1, Retain$inflection + 100)
-          if(Retain$knee==retain_temp) break
+          upper_temp <- Upper$knee
+          Upper <- Calc_upper(dat_sim1, Upper$inflection + 100)
+          if(Upper$knee==upper_temp) break
         }
       }
         
-      Knee_cell <- colnames(dat_sim1)[colSums(dat_sim1)>=retain_temp]
+      Knee_cell <- colnames(dat_sim1)[colSums(dat_sim1)>=upper_temp]
       Knee_cells[1,sss] <- sum(Knee_cell%in%colnames(G1))
       Knee_cells[2,sss] <- sum(Knee_cell%in%colnames(G2))
       Knee_cells[3,sss] <- sum(Knee_cell%in%colnames(G3))
@@ -237,8 +237,8 @@ SIM2 <-
       
       res_CB2 <-
           CB2FindCell(dat_sim1,
-              background_threshold = threshold,
-              FDR_threshold = FDR, retain = retain_temp,
+              lower = threshold,
+              FDR_threshold = FDR, upper = upper_temp,
               ...)
 
       res1 <- colnames(GetCellMat(res_CB2))
@@ -258,7 +258,7 @@ SIM2 <-
       FP_CB2[3, sss] <- length(grep(x = res1, pattern = "bg"))
       FP_CB2[4, sss] <- FP_CB2[3, sss] / th_bg
       
-      eOut <- emptyDrops(dat_sim1, lower = threshold,retain = retain_temp)
+      eOut <- emptyDrops(dat_sim1, lower = threshold,upper = upper_temp)
       sim_ED <- dat_sim1[, ifelse(is.na(eOut$FDR), FALSE, eOut$FDR <= FDR)]
       res_ED2 <- colnames(sim_ED)
       
@@ -354,7 +354,7 @@ SIM2 <-
 #to the beginning to avoid unstable knee point estimation when lower threshold
 #changes. For its origin, see 
 #https://github.com/MarioniLab/DropletUtils/blob/master/R/barcodeRanks.R
-Calc_retain <- function(dat,lower){
+Calc_upper <- function(dat,lower){
     dat <- FilterGB(dat)
     totals <- unname(colSums(dat))
     o <- order(totals, decreasing=TRUE)

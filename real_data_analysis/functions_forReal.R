@@ -154,7 +154,7 @@ Attenuate <- function(x){
     return(x)
 }
 
-Htmap <- function(dat,set, Allgene=T, background_threshold=100, Plot="both"){
+Htmap <- function(dat,set, Allgene=T, lower=100, Plot="both"){
     dat <- as.matrix(dat)
 
     if(set=="mbrain"){
@@ -205,7 +205,7 @@ Htmap <- function(dat,set, Allgene=T, background_threshold=100, Plot="both"){
 
     if(Plot%in%c("both","D")){
         dist_plot(colnames(dat_NC), colnames(dat_C)[!EDonly], bset3,
-                  colnames(dat_r)[Matrix::colSums(dat_r)<=background_threshold],rownames(dat),
+                  colnames(dat_r)[Matrix::colSums(dat_r)<=lower],rownames(dat),
                   dat=dat_r, Allgene = Allgene)
     }
 
@@ -439,7 +439,7 @@ CB2Cluster <- function(CB2Out, tsneOut,sizeFilter=0){
     return(tsneOut)
 }
 
-Calc_retain <- function(dat,lower){
+Calc_upper <- function(dat,lower){
     dat <- FilterGB(dat)
     totals <- unname(colSums(dat))
     o <- order(totals, decreasing=TRUE)
