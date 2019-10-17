@@ -383,38 +383,24 @@ nbg <- names(sort(Matrix::rowMeans(placenta_r[,Matrix::colSums(placenta_r)<=100]
 
 distribution plot
 ```{r}
+C_cand <- c(6,11,12,14)
 
-tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C14_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
-Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub1)],"placenta", Plot = "D")
-dev.off()
+for(CC in C_cand){
+    fname <- paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta/placenta_C",CC)
+    
+    placenta_sub <- placenta_f[,rownames(placenta_tsne_n1)[placenta_tsne_n1$Cluster==CC]]
+    n_temp <- names(sort(Matrix::rowMeans(placenta_sub),decreasing = T)[1:500] )
 
-tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C14_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
-Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub1)],"placenta", Plot = "H")
-dev.off()
-
-tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C6_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
-Htmap(placenta_r[sort(filter_mr(n2)[1:100]),colnames(placenta_sub2)],"placenta", Plot = "D")
-dev.off()
-
-tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C6_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
-Htmap(placenta_r[sort(filter_mr(n2)[1:100]),colnames(placenta_sub2)],"placenta", Plot = "H")
-dev.off()
-
-tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C11_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
-Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub3)],"placenta", Plot = "D")
-dev.off()
-
-tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C11_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
-Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub3)],"placenta", Plot = "H")
-dev.off()
-
-tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C12_D%03d.tif",width=20,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
-Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub4)],"placenta", Plot = "D")
-dev.off()
-
-tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/placenta_C12_H.tif",width=20,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
-Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub4)],"placenta", Plot = "H")
-dev.off()
+    tiff(filename =paste0(fname,"_D_%03d.tif"),width=10,height=5,units="cm",res=300,pointsize=10, compression = "lzw")
+    Htmap(placenta_r[sort(filter_mr(n_temp)[1:100]),colnames(placenta_sub)],"placenta", Plot = "D")
+    dev.off()
+    
+    
+    tiff(filename =paste0(fname,"_H.tif"),width=15,height=15,units="cm",res=300,pointsize=10, compression = "lzw")
+    Htmap(placenta_r[sort(filter_mr(n_temp)[1:100]),colnames(placenta_sub)],"placenta", Plot = "H")
+    dev.off()
+    
+}
 
 Htmap(placenta_r[sort(filter_mr(n1)[1:100]),colnames(placenta_sub1)],"placenta")
 Htmap(placenta_r[sort(filter_mr(n2)[1:100]),colnames(placenta_sub2)],"placenta")
