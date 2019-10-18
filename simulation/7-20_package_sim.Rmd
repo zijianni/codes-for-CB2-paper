@@ -10,7 +10,7 @@ library(scCB2)
 library(DropletUtils)
 
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/MALT.RData")
-load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/mbrain.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC33K.RData")
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC8K.RData")
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/mbrain1K.RData")
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/placenta.RData")
