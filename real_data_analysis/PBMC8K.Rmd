@@ -1,0 +1,181 @@
+---
+title: "7-28"
+author: "Zijian Ni"
+output: html_document
+---
+
+```{r,warning=F,message=F,echo=F}
+SEED=2019
+RED="#FF9999"
+BLUE="#56B4E9"
+GREEN="#009E73"
+YELLOW="#F0E442"
+library(scCB2)
+suppressMessages(library(DropletUtils))
+library(ggplot2)
+library(Rtsne)
+suppressMessages(library(dendextend))
+suppressMessages(library(Matrix))
+library(grid)
+suppressMessages(library(edgeR))
+library(reshape2)
+suppressMessages(library(gplots))
+library(scran)
+library(irlba)
+library(scater)
+library(enrichR)
+library(Seurat)
+
+source("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/functions_forReal.R")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC8K.RData")
+
+PBMC8K_knee <- barcodeRanks(PBMC8K_r,lower = 100)@metadata$knee
+
+PBMC8K_inflection <- barcodeRanks(PBMC8K_r,lower = 100)@metadata$inflection
+
+
+set.seed(SEED)
+eOut <- emptyDrops(PBMC8K_r,lower=100)
+PBMC8K_ED <- PBMC8K_r[,ifelse(is.na(eOut$FDR),FALSE,eOut$FDR<=0.01)]
+set.seed(SEED)
+PBMC8K_CB2Out <- CB2FindCell(PBMC8K_r)
+PBMC8K_CB2 <- GetCellMat(PBMC8K_CB2Out)
+```
+
+
+##PBMC8K
+
+```{r,echo=F}
+cat("Compare between cor and ED\n")
+
+cat("Whole result comparison: \n")
+diff_PBMC8K <- barcode_diff(PBMC8K_CB2,PBMC8K_ED)
+cat("below knee point comparison: \n")
+diff_PBMC8K_knee <- barcode_diff(PBMC8K_CB2[,Matrix::colSums(PBMC8K_CB2)<PBMC8K_knee],PBMC8K_ED[,Matrix::colSums(PBMC8K_ED)<PBMC8K_knee])
+cat("Total count <200 comparison: \n")
+diff_PBMC8K_knee2 <- barcode_diff(PBMC8K_CB2[,Matrix::colSums(PBMC8K_CB2)<200],PBMC8K_ED[,Matrix::colSums(PBMC8K_ED)<200])
+```
+
+
+##normalization
+```{r,echo=F}
+# Ent_mat1 <- PBMC8K_r[,diff_PBMC8K$CB2_only]
+# 
+# com_mat1 <- PBMC8K_r[,diff_PBMC8K$Common_b]
+# 
+# ED_mat1 <- PBMC8K_r[,diff_PBMC8K$ED_only]
+# 
+# 
+# set.seed(SEED)
+# sce <- SingleCellExperiment(list(counts=cbind(Ent_mat1,com_mat1,ED_mat1)))
+# clusters <- quickCluster(sce, min.size=100)
+# sce <- computeSumFactors(sce, cluster=clusters)
+# sce <- normalize(sce)
+# 
+# PBMC8K_f <- sce@assays@data$logcounts
+# str(PBMC8K_f)
+# colnames(PBMC8K_f) <- colnames(sce@assays@data$counts)
+# rownames(PBMC8K_f) <- rownames(sce@assays@data$counts)
+# 
+# save(sce,PBMC8K_f,file="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/PBMC8K_f.RData")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/PBMC8K_f.RData")
+```
+
+
+##PBMC8K
+
+```{r}
+# Ent_mat1 <- PBMC8K_f[,diff_PBMC8K$CB2_only[diff_PBMC8K$CB2_only%in%colnames(PBMC8K_f)]]
+# 
+# com_mat1 <- PBMC8K_f[,diff_PBMC8K$Common_b[diff_PBMC8K$Common_b%in%colnames(PBMC8K_f)]]
+# 
+# ED_mat1 <- PBMC8K_f[,diff_PBMC8K$ED_only[diff_PBMC8K$ED_only%in%colnames(PBMC8K_f)]]
+# 
+# PBMC8K_S <- CreateSeuratObject(counts = FilterGB(cbind(com_mat1,Ent_mat1,ED_mat1)), project = "PBMC8K")
+# set.seed(SEED)
+# PBMC8K_S <- FindVariableFeatures(PBMC8K_S, selection.method = "vst", nfeatures = 4000)
+# #str(VariableFeatures(PBMC8K_S))
+# all.genes <- rownames(PBMC8K_S)
+# PBMC8K_S <- ScaleData(PBMC8K_S, features = all.genes)
+# PBMC8K_S <- RunPCA(PBMC8K_S, features = VariableFeatures(object = PBMC8K_S))
+# PBMC8K_S <- FindNeighbors(PBMC8K_S, dims = 1:50)
+# PBMC8K_S <- FindClusters(PBMC8K_S)
+
+# Unique_percent <- c()
+# for(cc in unique(PBMC8K_S$seurat_clusters)){
+#     Sub <- names(PBMC8K_S$seurat_clusters)[PBMC8K_S$seurat_clusters==cc]
+#     Unique_percent <- c(Unique_percent, sum(Sub%in%diff_PBMC8K$CB2_only)/length(Sub))
+# }
+# names(Unique_percent) <- unique(PBMC8K_S$seurat_clusters)
+# round(Unique_percent[order(as.integer(names(Unique_percent)))],3)
+# sum(Unique_percent>=0.9)
+
+
+# set.seed(SEED)
+# PBMC8K_S <- RunTSNE(PBMC8K_S, dims = 1:50)
+# DimPlot(PBMC8K_S, reduction = "tsne")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/PBMC8K_tsne_n1.RData")
+
+# PBMC8K_tsne_n1 <- as.data.frame(PBMC8K_S@reductions$tsne@cell.embeddings)
+# PBMC8K_tsne_n1 <- cbind(PBMC8K_tsne_n1,c(rep("Common",dim(com_mat1)[2]),
+#                                        rep("CB2_only",dim(Ent_mat1)[2]),
+#                                        rep("ED_only",dim(ED_mat1)[2])))
+# 
+# 
+# colnames(PBMC8K_tsne_n1) <- c("tSNE1","tSNE2","Group")
+# PBMC8K_tsne_n1$Group <- as.character(PBMC8K_tsne_n1$Group)
+#   
+# PBMC8K_knee_bc <- names(which(Matrix::colSums(PBMC8K_CB2)>=PBMC8K_knee))
+# PBMC8K_tsne_n1$Group[which(colnames(com_mat1)%in%PBMC8K_knee_bc)] <- "Above_knee_point"
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/PBMC8K/PBMC8K_tSNE.tif",width=22,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+ggplot(PBMC8K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Group),size=0.2)+
+  scale_color_manual(values=c("deeppink3","gold","deeppink1","black")) +  theme_bw() + theme(axis.text = element_blank(),axis.title = element_blank(),legend.position = "none",panel.border = element_rect(colour = "black", fill=NA, size=1.5), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+dev.off()
+
+PBMC8K_tsne_n1$Cluster <- as.character(PBMC8K_S$seurat_clusters)
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/PBMC8K_Cluster.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+ggplot(PBMC8K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.2)+
+  scale_color_discrete(breaks=unique(PBMC8K_tsne_n1$Cluster))+ guides(colour = guide_legend(override.aes = list(size=2)))+ theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+dev.off()
+
+```
+
+```{r}
+MK_gene <- c("MT","count","PF4","PPBP","CD19","CD79A","CD14","CD68","CCR7","CD27","CD8A","CD8B")
+C_cand <- c(0,1,3,4,5,7,12,14)
+
+for(CC in C_cand){
+    fname <- paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/PBMC8K/NEW_PBMC8K_C",CC)
+    
+    PBMC8K_sub <- PBMC8K_f[,rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster==CC]]
+    n_temp <- names(sort(Matrix::rowMeans(PBMC8K_sub),decreasing = T)[1:500] )
+
+    tiff(filename =paste0(fname,"_D_%03d.tif"),width=10,height=5,units="cm",res=300,pointsize=10, compression = "lzw")
+    Htmap(PBMC8K_r[sort(filter_mr(n_temp)[2:101]),colnames(PBMC8K_sub)],"PBMC8K", Plot = "D",AddBackground = F)
+    dev.off()
+    
+    
+    tiff(filename =paste0(fname,"_H.tif"),width=15,height=15,units="cm",res=300,pointsize=10, compression = "lzw")
+    Htmap(PBMC8K_r[sort(filter_mr(n_temp)[2:101]),colnames(PBMC8K_sub)],"PBMC8K", Plot = "H")
+    dev.off()
+    
+}
+
+MK_gene2 <- c("CD14","PF4","CD19","CD79A")
+for(GG in MK_gene2){
+    print(GG)
+    tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/PBMC8K/PBMC8K_",GG,".tif"),width=15,height=12,units="cm",res=300,pointsize=10, compression = "lzw")
+    mk_plot(GG,diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
+    dev.off()
+}
+mk_plot("MT",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
+mk_plot("count",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
+mk_plot("COX8A",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
+
+```
