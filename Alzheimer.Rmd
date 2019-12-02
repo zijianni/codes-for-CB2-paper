@@ -1,0 +1,409 @@
+---
+title: "9-18"
+author: "Zijian Ni"
+output: html_document
+---
+
+Alzheimer study:
+
+Human brain cells from Prefrontal Cortex zone. 48 samples. Two conditions: AD-pathology v.s. control.
+
+
+```{r,warning=F,message=F,echo=F}
+SEED=2019
+RED="#FF9999"
+BLUE="#56B4E9"
+GREEN="#009E73"
+YELLOW="#F0E442"
+library(scCB2)
+suppressMessages(library(DropletUtils))
+library(ggplot2)
+library(Rtsne)
+suppressMessages(library(dendextend))
+suppressMessages(library(Matrix))
+library(grid)
+suppressMessages(library(edgeR))
+library(reshape2)
+suppressMessages(library(gplots))
+library(scran)
+library(irlba)
+library(scater)
+library(Seurat)
+
+source("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/functions_forReal.R")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/Alzheimer.RData")
+
+Groups <- as.integer(gsub(".*-([d]*)","\\1",colnames(Alz_r)))
+
+Alz_knee <- Calc_retain(Alz_r,lower=100)$knee #8136
+
+# set.seed(SEED)
+# AlzAll_CB2Out <- CB2FindCell(Alz_r,Ncores = 6,retain = Alz_knee)
+# AlzAll_CB2 <- GetCellMat(AlzAll_CB2Out)
+# 
+# 
+# set.seed(SEED)
+# eOut <- emptyDrops(Alz_r,lower=100, retain = Alz_knee)
+# AlzAll_ED <- Alz_r[,ifelse(is.na(eOut$FDR),FALSE,eOut$FDR<=0.01)]
+# save(AlzAll_CB2,AlzAll_ED,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/AlzAll_CB2_ED.RData")
+
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/AlzAll_CB2_ED.RData")
+
+#load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/diff_Alz.RData")
+```
+
+##Unique Cells in Alz
+
+```{r,echo=F}
+cat("Compare between CB2 and ED\n")
+diff_Alz <- barcode_diff(AlzAll_CB2,AlzAll_ED)
+cat("below knee point comparison: \n")
+diff_Alz_knee <- barcode_diff(AlzAll_CB2[,Matrix::colSums(AlzAll_CB2)<Alz_knee],AlzAll_ED[,Matrix::colSums(AlzAll_ED)<Alz_knee])
+```
+
+
+##normalization
+```{r,echo=F}
+# Ent_mat1 <- Alz_r[,diff_Alz$CB2_only]
+# 
+# com_mat1 <- Alz_r[,diff_Alz$Common_b]
+# 
+# ED_mat1 <- Alz_r[,diff_Alz$ED_only]
+# 
+# 
+# set.seed(SEED)
+# sce <- SingleCellExperiment(list(counts=cbind(Ent_mat1,com_mat1,ED_mat1)))
+# clusters <- quickCluster(sce, min.size=100)
+# sce <- computeSumFactors(sce, cluster=clusters)
+# sce <- normalize(sce)
+# 
+# Alz_f <- sce@assays$data$logcounts
+# str(Alz_f)
+# colnames(Alz_f) <- colnames(sce@assays$data$counts)
+# rownames(Alz_f) <- rownames(sce@assays$data$counts)
+# 
+# save(Alz_f,file="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_f.RData")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_f.RData")
+```
+
+
+##Alz
+
+```{r,warning=F,message=F,echo=F}
+# Ent_mat1 <- Alz_f[,diff_Alz$CB2_only[diff_Alz$CB2_only%in%colnames(Alz_f)]]
+# 
+# com_mat1 <- Alz_f[,diff_Alz$Common_b[diff_Alz$Common_b%in%colnames(Alz_f)]]
+# 
+# ED_mat1 <- Alz_f[,diff_Alz$ED_only[diff_Alz$ED_only%in%colnames(Alz_f)]]
+# 
+# Alz_S <- CreateSeuratObject(counts = cbind(com_mat1,ED_mat1, Ent_mat1), project = "Alz")
+# set.seed(SEED)
+# Alz_S <- FindVariableFeatures(Alz_S, selection.method = "vst", nfeatures = 4000)
+# 
+# Alz_S <- ScaleData(Alz_S)
+# Alz_S <- RunPCA(Alz_S, features = VariableFeatures(object = Alz_S))
+# 
+# #Alz_S <- FindClusters(Alz_S, algorithm = 3, n.start = 50, n.iter = 50)
+# Alz_S <- FindNeighbors(Alz_S, dims = 1:50)
+# Alz_S <- FindClusters(Alz_S,n.start = 50, n.iter = 50)
+# 
+# set.seed(SEED)
+# Alz_S <- RunTSNE(Alz_S, dims = 1:50)
+# DimPlot(Alz_S, reduction = "tsne")
+# 
+
+# Unique_percent <- c()
+# for(cc in unique(Alz_S$seurat_clusters)){
+#     Sub <- names(Alz_S$seurat_clusters)[Alz_S$seurat_clusters==cc]
+#     Unique_percent <- c(Unique_percent, sum(Sub%in%diff_Alz$CB2_only)/length(Sub))
+# }
+# names(Unique_percent) <- unique(Alz_S$seurat_clusters)
+# round(Unique_percent[order(as.integer(names(Unique_percent)))],3)
+# sum(Unique_percent>=0.9)
+
+#table(Alz_S$seurat_clusters)
+
+
+
+# head(Alz_tsne_n)
+# Alz_tsne_n1 <- as.data.frame(Alz_S@reductions$tsne@cell.embeddings)
+# Alz_tsne_n1 <- cbind(Alz_tsne_n1,c(rep("Common",ncol(com_mat1)),
+#                                        rep("ED_only",ncol(ED_mat1)),
+#                                    rep("CB2_only",ncol(Ent_mat1))))
+# 
+# 
+# colnames(Alz_tsne_n1) <- c("tSNE1","tSNE2","Group")
+# Alz_tsne_n1$Group <- as.character(Alz_tsne_n1$Group)
+# Alz_tsne_n1$Cluster[names(Alz_S$seurat_clusters)] <- as.character(Alz_S$seurat_clusters)
+# Condition <- as.integer(unlist(lapply(strsplit(rownames(Alz_tsne_n1),split = "-"),function(x) x[2])))%%2
+# 
+# Alz_tsne_n1$Condition <- ifelse(Condition == 1, "Control", "AD-pathology")
+
+#
+#save(Alz_tsne_n1,file="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_tsne1.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_tsne1.RData")
+
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz_tSNE.tif",width=22,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+ggplot(Alz_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Group),size=0.05)+
+  scale_color_manual(values=c("deeppink3","yellow","deeppink1","black"))+ theme_bw() +
+    guides(colour = guide_legend(override.aes = list(size=2)))+ 
+    theme(axis.text = element_blank(),axis.title = element_blank(),legend.position = "none",panel.border = element_rect(colour = "black", fill=NA, size=1.5), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+dev.off()
+
+ggplot(Alz_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Condition),size=0.05)
+
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz_Cluster.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
+
+ggplot(Alz_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.05)+
+  scale_color_discrete(breaks=unique(Alz_tsne_n1$Cluster))+ guides(colour = guide_legend(override.aes = list(size=2)))+ theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+dev.off()
+
+#names(which(colSums(Alz_r[,colnames(Alz_f)])<200))
+ggplot(Alz_tsne_n1[names(which(colSums(Alz_r[,colnames(Alz_f)])<200)),])+geom_point(aes(x=tSNE1,y=tSNE2,color=Group),size=0.05)+
+  scale_color_manual(values=c("yellow","deeppink1","black"))+ theme_bw() +
+    guides(colour = guide_legend(override.aes = list(size=2)))+ 
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+    xlim(min(Alz_tsne_n1$tSNE1),max(Alz_tsne_n1$tSNE1))+ylim(min(Alz_tsne_n1$tSNE2),max(Alz_tsne_n1$tSNE2))
+
+
+mk_plot("count", dat_tsne_n1 = Alz_tsne_n1, dat_f=cbind(com_mat1,ED_mat1))  
+
+```
+
+
+
+distribution plot
+```{r}
+C2 <- rownames(Alz_tsne_n1)[check_range(Alz_tsne_n1$y,15,31) & check_range(Alz_tsne_n1$x,10,17)]
+
+C3 <- rownames(Alz_tsne_n1)[check_range(Alz_tsne_n1$y,31,41) & check_range(Alz_tsne_n1$x,5,15)]
+
+C4 <- rownames(Alz_tsne_n1)[check_range(Alz_tsne_n1$y,-1,5) & check_range(Alz_tsne_n1$x,23,29)]
+
+MK_gene <- c("SYT1","SNAP25","GRIN1","SLC17A7","CAMK2A","NRGN","GAD1","GAD2","MBP","MOBP","PLP1","CD74","CSF1R","C3","AQP4","GFAP","FAM107A","SOX9","PDGFRA","VCAN","CSPG4","FLT1","CLDN5")
+C_cand <- c(2,3,4,6,7,8,9,12,13,14,15,16,17,19,20)
+
+for(CC in C_cand){
+    fname <- paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz/Alz_newColor_C",CC)
+    
+    Alz_sub <- Alz_f[,rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster==CC]]
+    n_temp <- names(sort(Matrix::rowMeans(Alz_sub),decreasing = T)[1:500] )
+
+    # tiff(filename =paste0(fname,"_D_%03d.tif"),width=10,height=5,units="cm",res=300,pointsize=10, compression = "lzw")
+    # Htmap(Alz_r[sort(filter_mr(setdiff(n_temp,"MALAT1"))[1:100]),colnames(Alz_sub)],"Alz", Plot = "D", AddBackground = F)
+    # dev.off()
+    
+    # tiff(filename =paste0(fname,"_D_marker_%03d.tif"),width=10,height=5,units="cm",res=300,pointsize=10, compression = "lzw")
+    # Htmap(Alz_r[MK_gene,rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster==CC]],"Alz",Plot = "D")
+    # dev.off()
+    
+    tiff(filename =paste0(fname,"_H.tif"),width=15,height=15,units="cm",res=300,pointsize=10, compression = "lzw")
+    Htmap(Alz_r[sort(filter_mr(setdiff(n_temp,"MALAT1"))[1:100]),colnames(Alz_sub)],"Alz", Plot = "H")
+    dev.off()
+    
+    # tiff(filename =paste0(fname,"_H_marker.tif"),width=10,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
+    # Htmap(Alz_r[MK_gene,rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster==CC]],"Alz", Plot = "H")
+    # dev.off()
+}
+
+Htmap(Alz_r[MK_gene,rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster==19]],"Alz")
+
+Alz_sub <- Alz_f[,rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster==9]] #303 ,209 CB2 only
+n_temp <- names(sort(Matrix::rowMeans(Alz_sub),decreasing = T)[1:500] )
+Htmap(Alz_r[sort(filter_mr(setdiff(n_temp,"MALAT1"))[1:100]),colnames(Alz_sub)],"Alz")
+```
+
+
+###marker gene
+```{r}
+
+for(GG in MK_gene2){
+    print(GG)
+    tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz/Alz_newColor_",GG,"_CB2.tif"),width=15,height=12,units="cm",res=300,pointsize=10, compression = "lzw")
+    mk_plot(GG,diff_dat = diff_Alz, dat_tsne_n1 = Alz_tsne_n1,dat_f = Alz_f, CB2=T)
+    dev.off()
+}
+
+#FAM107A
+#SOX9
+
+mk_plot("DHFR",diff_dat = diff_Alz, dat_tsne_n1 = Alz_tsne_n1,dat_f = Alz_f, CB2=T)
+```
+
+
+
+###Relook at CB2 + ED. Follow data processing steps in the Alzheimer paper.
+```{r}
+Alz_CB2 <- c(diff_Alz$Common_b,diff_Alz$CB2_only)
+Alz_ED <- c(diff_Alz$Common_b,diff_Alz$ED_only)
+
+Alz_fall <- unique(c(Alz_CB2,Alz_ED))
+
+
+#Filter out high mitochondrial cells
+Alz_MT <- colSums(Alz_r[,Alz_fall][grep("\\<MT-",rownames(Alz_r)),])
+Alz_MTprop <- Alz_MT/colSums(Alz_r[,Alz_fall])
+
+Alz_fall3 <- Alz_fall[Alz_MTprop<=0.4]
+
+
+# # Redo normalization
+# set.seed(SEED)
+# km <- kmeans(Alz_MTprop,centers = 2)$cluster
+# Alz_fall2 <- names(km)[km==1]
+
+# set.seed(SEED)
+# sce <- SingleCellExperiment(list(counts=Alz_r[rowSums(Alz_r[,Alz_fall3]>0)>=2,Alz_fall3]))
+# clusters <- quickCluster(sce,min.size=100)
+# sce <- computeSumFactors(sce, cluster=clusters, positive=FALSE)
+# Neg <- which(sce@int_colData$size_factor<=0)
+# sce@int_colData$size_factor[Neg] <- sort(sce@int_colData$size_factor[-Neg])[1]/10
+# 
+# sce <- normalize(sce)
+# 
+# Alz_fAll3 <- sce@assays$data$logcounts
+# 
+# colnames(Alz_fAll3) <- colnames(sce@assays$data$counts)
+# rownames(Alz_fAll3) <- rownames(sce@assays$data$counts)
+
+#save(Alz_fAll3,file="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_f_All3.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_f_All3.RData")
+
+# Alz_S <- CreateSeuratObject(counts = Alz_fAll3, project = "Alz")
+# set.seed(SEED)
+# Alz_S <- FindVariableFeatures(Alz_S, selection.method = "vst", nfeatures = 4000)
+# Alz_S <- ScaleData(Alz_S)
+# Alz_S <- RunPCA(Alz_S, features = VariableFeatures(object = Alz_S))
+# Alz_S <- FindNeighbors(Alz_S, dims = 1:50)
+# Alz_S <- FindClusters(Alz_S,n.start = 50, n.iter = 50)
+
+# set.seed(SEED)
+# Alz_S <- RunTSNE(Alz_S, dims = 1:50)
+# 
+# Alz_tsne3_all <- as.data.frame(Alz_S@reductions$tsne@cell.embeddings)
+# 
+# colnames(Alz_tsne3_all) <- c("tSNE1","tSNE2")
+# Alz_tsne3_all$Cluster <- as.character(Alz_S$seurat_clusters)
+# 
+# Condition <- as.integer(unlist(lapply(strsplit(rownames(Alz_tsne3_all),split = "-"),function(x) x[2])))%%2
+# # 
+# Alz_tsne3_all$Condition <- ifelse(Condition == 1, "Control", "AD-pathology")
+# Alz_tsne3_all[names(Alz_S$seurat_clusters),]$Cluster <- as.character(Alz_S$seurat_clusters)
+# Alz_tsne3_all$Group <- "common"
+# Alz_tsne3_all$Group[rownames(Alz_tsne3_all)%in%setdiff(Alz_CB2,Alz_ED)] <- "CB2_only"
+# Alz_tsne3_all$Group[rownames(Alz_tsne3_all)%in%setdiff(Alz_ED,Alz_CB2)] <- "ED_only"
+
+```
+
+
+##DE analysis of Excitatory and Inhibitory Neurons.
+```{r}
+# MK_gene2 <- c("SYT1","SLC17A7", "GAD1","GAD2","GFAP","MBP", "CD74","PDGFRA","FLT1")
+# for(GG in MK_gene2){
+#     print(GG)
+#     tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz/NEW_Alz_",GG,".tif"),width=15,height=12,units="cm",res=300,pointsize=10, compression = "lzw")
+#     mk_plot(GG,diff_dat = diff_Alz, dat_tsne_n1 = Alz_tsne3_all,dat_f = Alz_fAll3, CB2=F)
+#     dev.off()
+# }
+
+# Alz_tsne3_all$celltype <- "ExN"
+# 
+# Alz_tsne3_all$celltype[Alz_tsne3_all$Cluster%in%c(0,2)] <- "Olig"
+# Alz_tsne3_all$celltype[Alz_tsne3_all$Cluster%in%c(27) & check_range(Alz_tsne3_all$tSNE1,5,20)] <- "GFAP+Olig"
+# Alz_tsne3_all$celltype[Alz_tsne3_all$Cluster%in%c(11) ] <- "OPC"
+# Alz_tsne3_all$celltype[Alz_tsne3_all$Cluster%in%c(6) |Alz_tsne3_all$Cluster%in%c(28) & check_range(Alz_tsne3_all$tSNE2,15,30) | Alz_tsne3_all$Cluster%in%c(27) & check_range(Alz_tsne3_all$tSNE1,-20,5)] <- "Ast"
+# Alz_tsne3_all$celltype[Alz_tsne3_all$Cluster%in%c(12)] <- "Mic"
+# Alz_tsne3_all$celltype[Alz_tsne3_all$Cluster%in%c(22) & check_range(Alz_tsne3_all$tSNE1,0,12)] <- "End"
+# Alz_tsne3_all$celltype[Alz_tsne3_all$Cluster%in%c(9,13,15,18,23)] <- "InN"
+
+#save(Alz_tsne3_all,file="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_tsne3_all.RData")
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_tsne3_all.RData")
+
+ggplot(Alz_tsne3_all)+geom_point(aes(x=tSNE1,y=tSNE2,color=celltype),size=0.05)+ guides(colour = guide_legend(override.aes = list(size=2)))+ theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+
+
+
+# FC_ExN <- as.data.frame(matrix(0,9,5))
+# FC_ExN[,5] <- c("GOLT1B","ATF6B","DDRGK1","TUBB2A","BEX2","ATPIF1","RASGEF1B","NGFRAP1","LINGO1")
+# colnames(FC_ExN) <- c("CB2 (logFC)","ED (logFC)", "CB2 (pval)","ED (pval)", "id")
+# 
+# for(i in seq_len(nrow(FC_ExN))){
+#     gene_tmp <- FC_ExN[i,5]
+#     t_CB2 <- DE(celltype = "ExN",gene=gene_tmp, tsne=Alz_tsne3_all[rownames(Alz_tsne3_all)%in%Alz_CB2,],  diff= F, prop = F)
+#     t_ED <- DE(celltype = "ExN",gene=gene_tmp, tsne=Alz_tsne3_all[rownames(Alz_tsne3_all)%in%Alz_ED,],  diff= F, prop = F)
+# 
+#     FC_ExN[i,1] <- t_CB2$log2FC
+#     FC_ExN[i,2] <- t_ED$log2FC
+# 
+#     FC_ExN[i,3] <- t_CB2$pval
+#     FC_ExN[i,4] <- t_ED$pval
+# }
+# 
+# 
+# 
+# FC_InN <- as.data.frame(matrix(0,9,5))
+# FC_InN[,5] <- c("TCEAL4","SPCS1","FBXO2","COX4I1","ATPIF1","SOD1","NGFRAP1","TMSB4X","NDUFA4")
+# colnames(FC_InN) <- c("CB2 (logFC)","ED (logFC)", "CB2 (pval)","ED (pval)", "id")
+# 
+# 
+# for(i in seq_len(nrow(FC_InN))){
+#     gene_tmp <- FC_InN[i,5]
+#     t_CB2 <- DE(celltype = "InN",gene=gene_tmp, tsne=Alz_tsne3_all[rownames(Alz_tsne3_all)%in%Alz_CB2,],  diff= F, prop = F)
+#     t_ED <- DE(celltype = "InN",gene=gene_tmp, tsne=Alz_tsne3_all[rownames(Alz_tsne3_all)%in%Alz_ED,],  diff= F, prop = F)
+# 
+#     FC_InN[i,1] <- t_CB2$log2FC
+#     FC_InN[i,2] <- t_ED$log2FC
+# 
+#     FC_InN[i,3] <- t_CB2$pval
+#     FC_InN[i,4] <- t_ED$pval
+# }
+# 
+# save(FC_ExN,FC_InN, file="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_DE_new.RData")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_DE_new.RData")
+
+ExN_p <- melt(FC_ExN[,3:5],id.vars="id")
+ tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz/Alz_DE_ExN_pval.tif"),width=18,height=9,units="cm",res=300,pointsize=10, compression = "lzw")
+ggplot(ExN_p, aes(x=id, y=value, fill=variable)) +
+    geom_bar(stat='identity', position='dodge')+ theme_bw() + theme(axis.text=element_text(size=10),axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position = "none",panel.border = element_rect(colour = "black", fill=NA, size=1.5), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  scale_x_discrete(limits=FC_ExN$id)
+dev.off()
+
+
+ExN_f <- melt(FC_ExN[,c(1,2,5)],id.vars="id")
+ tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz/Alz_DE_ExN_logFC.tif"),width=18,height=9,units="cm",res=300,pointsize=10, compression = "lzw")
+ggplot(ExN_f, aes(x=id, y=value, fill=variable)) +
+    geom_bar(stat='identity', position='dodge') + theme_bw() + theme(axis.text=element_text(size=10),axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position = "none",panel.border = element_rect(colour = "black", fill=NA, size=1.5), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  scale_x_discrete(limits=FC_ExN$id)
+dev.off()
+
+InN_p <- melt(FC_InN[,3:5],id.vars="id")
+ tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz/Alz_DE_InN_pval.tif"),width=18,height=9,units="cm",res=300,pointsize=10, compression = "lzw")
+
+ggplot(InN_p, aes(x=id, y=value, fill=variable)) +
+    geom_bar(stat='identity', position='dodge')+ theme_bw() + theme(axis.text=element_text(size=10),axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position = "none",panel.border = element_rect(colour = "black", fill=NA, size=1.5), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  scale_x_discrete(limits=FC_InN$id)
+dev.off()
+
+InN_f <- melt(FC_InN[,c(1,2,5)],id.vars="id")
+ tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz/Alz_DE_InN_logFC.tif"),width=18,height=9,units="cm",res=300,pointsize=10, compression = "lzw")
+
+ggplot(InN_f, aes(x=id, y=value, fill=variable)) +
+    geom_bar(stat='identity', position='dodge')+ theme_bw() + theme(axis.text=element_text(size=10), axis.title.y = element_blank(),axis.title.x = element_blank(), legend.position = "none",panel.border = element_rect(colour = "black", fill=NA, size=1.5), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  scale_x_discrete(limits=FC_InN$id)
+dev.off()
+```
