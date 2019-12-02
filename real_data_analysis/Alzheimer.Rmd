@@ -51,7 +51,6 @@ Alz_knee <- Calc_retain(Alz_r,lower=100)$knee #8136
 
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/AlzAll_CB2_ED.RData")
 
-#load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/diff_Alz.RData")
 ```
 
 ##Unique Cells in Alz
