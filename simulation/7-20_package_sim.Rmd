@@ -984,9 +984,3 @@ larger than background barcodes.
 In reality if library size is very large, there will accordingly be more ambient 
 RNAs inducing large background barcodes. Thus lower the threshold still 
 has the risk of including too many background barcodes.
-
-## Lower the upper threshold in real data (PBMC8K, mbrain1K, placenta)
-```{r}
-
-
-```
