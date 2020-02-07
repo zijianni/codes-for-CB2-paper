@@ -1,3 +1,7 @@
 All data excepting the Alzheimer study are saved as .RData format, which can be directly loaded into R. 
 Genes and barcodes with zero expression are already filtered out.
+
+Temporary analyses results are also saved as .RData so that they can be directly loaded when running the scripts. 
+Otherwise one can recover the commented codes (starting with #) and rerun analyses.
+
 https://uwmadison.box.com/s/fcfw8698ekauyye6bjxbiazvh05fpsi9
