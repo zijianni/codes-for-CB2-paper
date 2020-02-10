@@ -122,6 +122,98 @@ cor_heatmap <- function(dat,
   )
 }
 
+SIMFUN_bg <- function(raw.mat,
+                      threshold = 100,
+                      remove_protein = T) {
+  if (remove_protein) {
+    protein <- grep(pattern = "TotalSeqB", x = rownames(raw.mat))
+    if (length(protein) > 0) {
+      raw.mat <- raw.mat[-protein, ]
+    }
+    
+  }
+  
+  stats <- barcodeRanks(raw.mat, lower = threshold)
+  
+  # Assuming all cells below the inflection point are empty droplets.
+  totals <- stats$total
+  empty.limit <- stats@metadata$inflection
+  ambient.prof <- rowSums(raw.mat[, totals <= empty.limit])
+  empty.totals <- totals[totals <= empty.limit]
+  
+  # Scrambling to generate resampled empty droplets.
+  gene.ids <- rep(seq_along(ambient.prof), ambient.prof)
+  gene.ids <- sample(gene.ids)
+  cell.ids <- rep(seq_along(empty.totals), empty.totals)
+  resampled <-
+    makeCountMatrix(gene.ids, cell.ids, all.genes = rownames(raw.mat))
+  colnames(resampled) <- paste0("bg_", 1:ncol(resampled))
+  
+  # Completed.
+  return(resampled)
+}
+
+
+SIM_bg <- function(dat,
+                   threshold = 100,
+                   remove_protein = T) {
+  if (remove_protein) {
+    protein <- grep(pattern = "TotalSeqB", x = rownames(dat))
+    if (length(protein) > 0) {
+      dat <- dat[-protein, ]
+    }
+    
+  }
+  brank <- barcodeRanks(dat, lower = threshold)
+  inflection <-
+    ifelse(is.null(brank$inflection),
+           brank@metadata$inflection,
+           brank$inflection)
+  
+  dat_bg1 <- dat[, Matrix::colSums(dat) %in% (1:inflection)]
+  g_name <- rownames(dat_bg1)
+  bc_dist <- Matrix::colSums(dat_bg1)
+  #str(bc_dist)
+  bg_dist <- Matrix::rowSums(dat_bg1)
+  #str(bg_dist)
+  #bg_pool <- rep(names(bg_dist),bg_dist)
+  bg_prop <- goodTuringProportions(bg_dist)
+  bc_t <- table(bc_dist)
+  
+  ##dat_bg1 is the new background
+  dat_tmp <- dat_bg1[, 0]
+  for (i in 1:length(table(bc_dist))) {
+    #print(i)
+    if (bc_t[i] %/% 5000 > 0) {
+      for (j in 1:(bc_t[i] %/% 5000)) {
+        #print(j)
+        dat_tmp <-
+          cbind(dat_tmp, rmultinom(5000, names(bc_t)[i], bg_prop))
+      }
+      dat_tmp <-
+        cbind(dat_tmp, rmultinom(bc_t[i] %% 5000, names(bc_t)[i], bg_prop))
+    } else{
+      dat_tmp <- cbind(dat_tmp, rmultinom(bc_t[i], names(bc_t)[i], bg_prop))
+      
+    }
+    
+    #if(i%%10000==0) print(i)
+  }
+  
+  dat_bg1 <- dat_tmp
+  colnames(dat_bg1) <- paste0("bg_", 1:ncol(dat_bg1))
+  
+  return(dat_bg1)
+  
+}
+
+reorder_mat <- function(mat, rate = 0.1) {
+  N_row <- as.integer(nrow(mat) * rate)
+  x <- 1:nrow(mat)
+  reorder_row <- sample(x, N_row)
+  x[sort(reorder_row)] <- reorder_row
+  return(mat[x, ])
+}
 
 filter_mr <- function(x) {
   tmp <- grep(pattern = "\\<RP", x = x)
@@ -148,13 +240,213 @@ Upsample <- function(x, target_count) {
   return(rmultinom(1, target_count, p))
 }
 
+SIM2 <-
+  function(n = 5,
+           dat,
+           dat_bg = NULL,
+           threshold = 100,
+           n_large = 2000,
+           n_middle = 2000,
+           n_small = 2000,
+           new_sim = T,
+           remove_protein = T,
+           FDR = 0.01,
+           reorder_rate = 0.1,
+           threegroup = T,
+           isEBDrop = F,
+           usePackage = T,
+           ...) {
+    if (remove_protein) {
+      protein <- grep(pattern = "TotalSeqB", x = rownames(dat))
+      if (length(protein) > 0) {
+        dat <- dat[-protein, ]
+      }
+    }
+    brank <- barcodeRanks(dat, lower = threshold)
+    inflection <-
+      ifelse(is.null(brank$inflection),
+             brank@metadata$inflection,
+             brank$inflection)
+    
+    ###background barcodes
+    if (is.null(dat_bg)) {
+      dat_bg <- SIM_bg(dat, threshold = threshold)
+    }
+    
+    
+    all_bg <- sum(Matrix::colSums(dat) %in% 1:inflection)
+    th_bg <- sum(Matrix::colSums(dat) %in% (threshold + 1):inflection)
+    
+    dat_true1 <- dat[, Matrix::colSums(dat) > inflection]
+    
+    
+    TP_CB2 <- matrix(0, 6, n + 1)
+    colnames(TP_CB2) <- c(paste0("rep", 1:n), "Ave")
+    rownames(TP_CB2) <-
+      c("G1", "G1 prop", "G2", "G2 prop", "G3", "G3 prop")
+    
+    FP_CB2 <- TP_CB2[1:4, ]
+    rownames(FP_CB2) <-
+      c(
+        paste0("all (", all_bg, ")"),
+        "all prop",
+        paste0(">", threshold, " (", th_bg, ")"),
+        paste0(">", threshold, " prop")
+      )
+    
+    TP_ED <- TP_CB2
+    FP_ED <- FP_CB2
+    
+    SEED.rep <- as.integer(runif(n, 1, 100000))
+    
+    for (sss in 1:n) {
+      SEED.tmp <- SEED.rep[sss]
+      
+      cat(paste0("Run ", sss, "\n"))
+      
+      
+      set.seed(SEED.tmp)
+      
+      
+      
+      ###2000 G1 large cells
+      G1 <- dat_true1[, sample(ncol(dat_true1), n_large, replace = T)]
+      colnames(G1) <- paste0("G1_", 1:ncol(G1))
+      G1 <- as(G1, "dgCMatrix")
+      
+      if (threegroup) {
+        ###2000 G2 middle cells (50% downsampling)
+        G2 <- dat_true1[, sample(ncol(dat_true1), n_middle, replace = T)]
+        G2 <- as(G2, "dgCMatrix")
+        G2 <- downsampleMatrix(G2, 0.5)
+        colnames(G2) <- paste0("G2_", 1:ncol(G2))
+      }
+      
+      
+      ###2000 G3 small cells (10% downsampling)
+      G3 <- dat_true1[, sample(ncol(dat_true1), n_small, replace = T)]
+      G3 <- as(G3, "dgCMatrix")
+      G3 <- downsampleMatrix(G3, 0.1)
+      colnames(G3) <- paste0("G3_", 1:ncol(G3))
+      
+      if (new_sim) {
+        G1 <- reorder_mat(G1, rate = reorder_rate)
+        if (threegroup)
+          G2 <- reorder_mat(G2, rate = reorder_rate)
+        G3 <- reorder_mat(G3, rate = reorder_rate)
+      }
+
+      if (threegroup) {
+        dat_sim1 <- cbind(dat_bg, G1, G2, G3)
+      } else{
+        dat_sim1 <- cbind(dat_bg, G1, G3)
+      }
+      
+      
+      
+      set.seed(SEED.tmp)
+        if(usePackage){
+            res_CB2 <-
+                scCB2::CB2FindCell(dat_sim1,
+                          pooling_threshold = threshold,
+                          FDR_threshold = FDR,
+                          ...)
+        }else{
+            res_CB2 <-
+                Find_Cell(dat_sim1,
+                          pooling_threshold = threshold,
+                          FDR_threshold = FDR,
+                          ...)
+        }
+
+        res1 <-
+          c(colnames(res_CB2$cluster_matrix),
+            colnames(res_CB2$cell_matrix))
+
+      
+      
+      
+      TP_CB2[1, sss] <- length(grep(x = res1, pattern = "G1"))
+      TP_CB2[2, sss] <- TP_CB2[1, sss] / n_large
+      
+      TP_CB2[3, sss] <- length(grep(x = res1, pattern = "G2"))
+      TP_CB2[4, sss] <- TP_CB2[3, sss] / n_middle
+      
+      TP_CB2[5, sss] <- length(grep(x = res1, pattern = "G3"))
+      TP_CB2[6, sss] <- TP_CB2[5, sss] / n_small
+      
+      FP_CB2[1, sss] <- length(grep(x = res1, pattern = "bg"))
+      FP_CB2[2, sss] <- FP_CB2[1, sss] / all_bg
+      
+      FP_CB2[3, sss] <- length(grep(x = res1, pattern = "bg"))
+      FP_CB2[4, sss] <- FP_CB2[3, sss] / th_bg
+      
+      
+      
+      
+      eOut <- emptyDrops(dat_sim1, lower = threshold)
+      sim_ED <- dat_sim1[, ifelse(is.na(eOut$FDR), FALSE, eOut$FDR <= FDR)]
+      res_ED2 <- colnames(sim_ED)
+      
+      TP_ED[1, sss] <- length(grep(x = res_ED2, pattern = "G1"))
+      TP_ED[2, sss] <- TP_ED[1, sss] / n_large
+      
+      TP_ED[3, sss] <- length(grep(x = res_ED2, pattern = "G2"))
+      TP_ED[4, sss] <- TP_ED[3, sss] / n_middle
+      
+      TP_ED[5, sss] <- length(grep(x = res_ED2, pattern = "G3"))
+      TP_ED[6, sss] <- TP_ED[5, sss] / n_small
+      
+      FP_ED[1, sss] <- length(grep(x = res_ED2, pattern = "bg"))
+      FP_ED[2, sss] <- FP_ED[1, sss] / all_bg
+      
+      FP_ED[3, sss] <- length(grep(x = res_ED2, pattern = "bg"))
+      FP_ED[4, sss] <- FP_ED[3, sss] / th_bg
+      
+    }
+    
+    
+    TP_CB2[, n + 1] <- rowMeans(TP_CB2[, 1:n])
+    TP_ED[, n + 1] <- rowMeans(TP_ED[, 1:n])
+    FP_CB2[, n + 1] <- rowMeans(FP_CB2[, 1:n])
+    FP_ED[, n + 1] <- rowMeans(FP_ED[, 1:n])
+    
+    Stat <- matrix(NA, 2, 2)
+    colnames(Stat) <- c("CB2", "ED")
+    rownames(Stat) <- c("Power", "FDR")
+    Stat[1, 1] <-
+      (TP_CB2[2, n + 1] * n_large + TP_CB2[4, n + 1] * n_middle + TP_CB2[6, n +
+                                                                           1] * n_small) / (n_large + n_middle + n_small)
+    Stat[1, 2] <-
+      (TP_ED[2, n + 1] * n_large + TP_ED[4, n + 1] * n_middle + TP_ED[6, n +
+                                                                        1] * n_small) / (n_large + n_middle + n_small)
+    Stat[2, 1] <-
+      FP_CB2[3, n + 1] / (FP_CB2[3, n + 1] + Stat[1, 1] * (n_large + n_middle +
+                                                             n_small))
+    Stat[2, 2] <-
+      FP_ED[3, n + 1] / (FP_ED[3, n + 1] + Stat[1, 2] * (n_large + n_middle +
+                                                           n_small))
+    Power_diff <- Stat[1, 1] - Stat[1, 2]
+    
+    return(
+      list(
+        TP_CB2 = TP_CB2,
+        FP_CB2 = FP_CB2,
+        TP_ED = TP_ED,
+        FP_ED = FP_ED,
+        Stat = Stat,
+        Power_diff = Power_diff
+      )
+    )
+  }
+
 Attenuate <- function(x){
-    q95 <- quantile(x,0.95)
+    q95 <- quantile(x,0.925)
     x[x>q95] <- q95
     return(x)
 }
 
-Htmap <- function(dat,set, Allgene=T, lower=100, Plot="both"){
+Htmap <- function(dat,set, Allgene=T, background_threshold=100, Plot="both", AddBackground=F){
     dat <- as.matrix(dat)
 
     if(set=="mbrain"){
@@ -189,12 +481,14 @@ Htmap <- function(dat,set, Allgene=T, lower=100, Plot="both"){
         dat_r<- Alz_r
     }
     
+    # b_BG <-colnames(dat_r)[(!colnames(dat_r)%in%unlist(diff_set)) & (colSums(dat_r)>100)]
+    # dat_BG <- dat_r[rownames(dat),sample(b_BG,100)]
     
     Group <- ifelse(colnames(dat)%in%diff_set$CB2_only,"Not captured","Captured")
     
     dat_C <- dat[,Group=="Captured"]
     dat_NC <- dat[,Group=="Not captured"]
-    dat_NC <- dat_NC[,order(colSums(dat_NC),decreasing = T)]
+    dat_NC <- dat_NC[,order(Matrix::colSums(dat_NC),decreasing = T)]
     
     EDonly <- colnames(dat_C)%in%diff_set$ED_only
     if(sum(EDonly)>0){
@@ -205,8 +499,8 @@ Htmap <- function(dat,set, Allgene=T, lower=100, Plot="both"){
 
     if(Plot%in%c("both","D")){
         dist_plot(colnames(dat_NC), colnames(dat_C)[!EDonly], bset3,
-                  colnames(dat_r)[Matrix::colSums(dat_r)<=lower],rownames(dat),
-                  dat=dat_r, Allgene = Allgene)
+                  colnames(dat_r)[Matrix::colSums(dat_r)<=background_threshold],rownames(dat),
+                  dat=dat_r, Allgene = Allgene, AddBackground=AddBackground)
     }
 
     
@@ -216,23 +510,26 @@ Htmap <- function(dat,set, Allgene=T, lower=100, Plot="both"){
             if(ncol(dat)>400){
                 ratio_C <-ncol(dat_C)/ncol(dat)
                 ratio_NC <- 1-ratio_C
-                
+
                 dat_C <- dat_C[,sample(ncol(dat_C),400*ratio_C)]
                 dat_NC <- dat_NC[,sample(ncol(dat_NC),400*ratio_NC)]
             }
+            # 
+            # if(ncol(dat_C)>=100) dat_C <- dat_C[,sample(ncol(dat_C),100)]
+            # if(ncol(dat_C)>=100) dat_NC <- dat_NC[,sample(ncol(dat_NC),100)]
             
             dat_heatmap0 <- cbind(dat_C,dat_NC)
             dat_heatmap0 <- t(apply(dat_heatmap0,1,Attenuate))
             dat_heatmap1 <- melt(dat_heatmap0)
             colnames(dat_heatmap1)[1:2] <- c("Gene","Barcode")
             
-            Cor <- round(cor(rowSums(dat_C),rowSums(dat_NC)),3)
-            
-            gp <- ggplot(dat_heatmap1, aes(x=Barcode, y=Gene)) + geom_tile(aes(fill = log(value+1)),colour = "white") + 
-                scale_fill_gradient(low = "white",high = "red") + 
-                theme(axis.text.y=element_text(size=5), axis.text.x = element_blank()) + 
-                geom_vline(xintercept = ncol(dat_C)+0.5)+
-                xlab(paste0("Barcode (Left: common cells  Right: CB2 extra cells)\nCorrelation: ",Cor))
+            Cor <- round(cor(Matrix::rowSums(dat_C),Matrix::rowSums(dat_NC)),3)
+            #scale_fill_gradient(low = "white",high = "deeppink1")
+            gp <- ggplot(dat_heatmap1, aes(x=Barcode, y=Gene)) + geom_tile(aes(fill = log(value+1)),colour = "red", size=10e-5) + 
+                scale_fill_gradient(low = "white",high = "green3") + labs(fill="")+
+                theme(axis.text.y=element_text(size=5), axis.text.x = element_blank(),
+                      axis.title=element_blank()) + 
+                geom_vline(xintercept = ncol(dat_C)+0.5, linetype="dashed", size=1, col="black")
             plot(gp)
         }
     }
@@ -243,60 +540,79 @@ Htmap <- function(dat,set, Allgene=T, lower=100, Plot="both"){
 
 }
 
-dist_plot <- function(bset1,bset2=NULL,bset3=NULL,bgset,gene,dat,Allgene = T){
-    if(Allgene){
-        # dist1 <- (Matrix::rowSums(dat[,bset1])/sum(dat[,bset1]))[gene]
-        # if(!is.null(bset2)) dist2 <- (Matrix::rowSums(dat[gene,bset2])/sum(dat[gene,bset2]))[gene]
-        # distBG <- (Matrix::rowSums(dat[gene,bgset])/sum(dat[gene,bgset]))[gene]
-        dist1 <- edgeR::goodTuringProportions(Matrix::rowSums(dat[,bset1,drop=F]))[gene,1]
-        if(!is.null(bset2)){
-            dist2 <- edgeR::goodTuringProportions(
-                Matrix::rowSums(dat[,bset2,drop=F]))[gene,1] 
-        }
-        if(!is.null(bset3)){
-            dist3 <- edgeR::goodTuringProportions(
-                Matrix::rowSums(dat[,bset3,drop=F]))[gene,1] 
-        }
-        distBG <- edgeR::goodTuringProportions(Matrix::rowSums(dat[,bgset]))[gene,1]
+# Extra plots for manuscript revision
+Htmap_revision <- function(barcodeID,dat, background_threshold=100, AddBackground=F){
+    
+    Top100 <- (names(sort(rowSums(dat[,barcodeID]),decreasing = T)))[1:100]
 
+    dist_plot(barcodeID, NULL, NULL,
+            colnames(dat)[Matrix::colSums(dat)<=background_threshold],sort(Top100),
+            dat=dat, AddBackground=AddBackground)
+}
+
+
+dist_plot <- function(bset1,bset2=NULL,bset3=NULL,bgset,gene,dat,
+                      Allgene = T, AddBackground=T){
+
+    distBGall <- edgeR::goodTuringProportions(Matrix::rowSums(dat[,bgset]))[,1]
+    if(AddBackground){
+        gene <- c(gene, filter_mr(setdiff(names(sort(distBGall,decreasing=T)),gene ))[1:25])
     }
-    # else{
-    #     dist1 <- Matrix::rowSums(dat[gene,bset1])/sum(dat[gene,bset1])
-    #     if(!is.null(bset2)) dist2 <- Matrix::rowSums(dat[gene,bset2])/sum(dat[gene,bset2])
-    #     distBG <- Matrix::rowSums(dat[gene,bgset])/sum(dat[gene,bgset])
-    #     
-    # }
+    
+    dist1 <- edgeR::goodTuringProportions(Matrix::rowSums(dat[,bset1,drop=F]))[gene,1]
+    if(!is.null(bset2)){
+        dist2 <- edgeR::goodTuringProportions(
+            Matrix::rowSums(dat[,bset2,drop=F]))[gene,1] 
+    }
+    if(!is.null(bset3)){
+        dist3 <- edgeR::goodTuringProportions(
+            Matrix::rowSums(dat[,bset3,drop=F]))[gene,1] 
+    }
+    distBG <- distBGall[gene]
+
     dist_dat <- data.frame(gene=gene,index=seq_along(gene),dist1=dist1,distBG=distBG)
     if(!is.null(bset2)) dist_dat$dist2 <- dist2
     if(!is.null(bset3)) dist_dat$dist3 <- dist3  
     if(!is.null(bset2)){
         gp2 <- ggplot(data=dist_dat)+theme(legend.position="bottom")+
-            geom_bar(stat="identity",aes(x=index, y=dist2,fill="Common"),alpha=0.5) +
-            xlab("gene index")+ylab("probability")+ylim(0,max(dist_dat[,-(1:2)]))+ 
-            scale_fill_manual(name= "", values=c("Common"="#00c746")) 
+            geom_bar(stat="identity",aes(x=index, y=dist2,fill="Common")) +
+            xlab("Gene Index")+ylab("Probability")+ylim(0,max(dist_dat[,-(1:2)]))+ 
+            scale_fill_manual(name= "", values=c("Common"="deeppink1")) + 
+            theme_bw() + theme(legend.position = "bottom", 
+                               panel.border = element_blank(), panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
         plot(gp2)
     }
 
     
     if(!is.null(bset3)){
         gp3 <- ggplot(data=dist_dat)+theme(legend.position="bottom")+
-            geom_bar(stat="identity",aes(x=index, y=dist3,fill="unique in ED"),alpha=0.5) +
-            xlab("gene index")+ylab("probability")+ylim(0,max(dist_dat[,-(1:2)]))+ 
-            scale_fill_manual(name= "", values=c("unique in ED"="#56B4E9")) 
+            geom_bar(stat="identity",aes(x=index, y=dist3,fill="unique in ED")) +
+            xlab("Gene Index")+ylab("Probability")+ylim(0,max(dist_dat[,-(1:2)]))+ 
+            scale_fill_manual(name= "", values=c("unique in ED"="black")) + 
+            theme_bw() + theme(legend.position = "bottom", 
+                               panel.border = element_blank(), panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
         plot(gp3)
     }
 
     
     gp <- ggplot(data=dist_dat)+theme(legend.position="bottom")+
-        geom_bar(stat="identity",aes(x=index, y=dist1,fill="unique in CB2"),alpha=0.5)+
-        xlab("gene index")+ylab("probability")+ylim(0,max(dist_dat[,-(1:2)]))+ 
-        scale_fill_manual(name= "", values=c("unique in CB2"="#FF9999"))
+        geom_bar(stat="identity",aes(x=index, y=dist1,fill="unique in CB2"))+
+        xlab("Gene Index")+ylab("Probability")+ylim(0,max(dist_dat[,-(1:2)]))+ 
+        scale_fill_manual(name= "", values=c("unique in CB2"="yellow"))+ 
+        theme_bw() + theme(legend.position = "bottom", 
+                           panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
     plot(gp)
     
     gp_bg <- ggplot(data=dist_dat)+ylim(0,max(dist_dat[,-(1:2)]))+
-                geom_bar(stat="identity",aes(x=index,y=distBG,fill="Background"),alpha=0.5)+
-        xlab("gene index")+ylab("probability") + scale_fill_manual(name= "", 
-            values=c("Background"="#000000"))+ theme(legend.position="bottom")
+                geom_bar(stat="identity",aes(x=index,y=distBG,fill="Background"))+
+        xlab("Gene Index")+ylab("Probability") + scale_fill_manual(name= "", 
+            values=c("Background"="#937C37"))+ theme(legend.position="bottom")+ 
+        theme_bw() + theme(legend.position = "bottom", 
+                           panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
     plot(gp_bg)
 }
 
@@ -347,34 +663,32 @@ enrich_heatmap <- function(term_list,...){
 }
 
 
-mk_plot <- function(mk_gene, prop=F,colorUp=T, diff_dat, dat_tsne_n1, dat_f){
-    Ent_mat1 <- dat_f[,diff_dat$CB2_only[diff_dat$CB2_only%in%colnames(dat_f)]]
+mk_plot <- function(mk_gene, prop=F,colorUp=T, diff_dat, dat_tsne_n1, dat_f,CB2=F){
+    if(!CB2) diff_dat <- NULL
     
-    com_mat1 <- dat_f[,diff_dat$Common_b[diff_dat$Common_b%in%colnames(dat_f)]]
-    
-    ED_mat1 <- dat_f[,diff_dat$ED_only[diff_dat$ED_only%in%colnames(dat_f)]]
-    
-    
+    dat_tsne_n1 <- dat_tsne_n1[colnames(dat_f),]
     
     if(mk_gene=="count"){
-        mk <- Matrix::colSums(cbind(com_mat1,Ent_mat1,ED_mat1))
+        mk <- Matrix::colSums(dat_f)
     }else if(mk_gene=="MT"){
         
-        mk <- Matrix::colSums(cbind(com_mat1,Ent_mat1,
-                                    ED_mat1)[grep("\\<MT-",rownames(com_mat1)),])
+        mk <- Matrix::colSums(dat_f[grep("\\<MT-",rownames(com_mat1)),])
     }else if(mk_gene=="mt"){
         
-        mk <- Matrix::colSums(cbind(com_mat1,Ent_mat1,
-                                    ED_mat1)[grep("\\<mt-",rownames(com_mat1)),])
+        mk <- Matrix::colSums(dat_f[grep("\\<mt-",rownames(com_mat1)),])
     }else{
-        mk <- cbind(com_mat1,Ent_mat1,ED_mat1)[mk_gene,]
+        mk <- dat_f[mk_gene,]
     }
     
     mk[mk>0] <- Attenuate(mk[mk>0])
-    tsne_dat <- data.frame(cbind(dat_tsne_n1,mk,Matrix::colSums(cbind(com_mat1,Ent_mat1,ED_mat1))))
+    tsne_dat <- data.frame(cbind(dat_tsne_n1,mk,Matrix::colSums(dat_f)))
     colnames(tsne_dat)[c(1,2,ncol(tsne_dat)-1:0)] <- c("x","y","marker","count")
     
-    
+    if(CB2){
+        tsne_dat <- tsne_dat[rownames(dat_tsne_n1)%in%diff_dat$CB2_only,]
+        mk <- tsne_dat$marker
+    }
+        
     if(prop){
         p2 <- ggplot()+guides(alpha = FALSE)+
             geom_point(data = tsne_dat[mk==0,],aes(x=x,y=y),size=0.2,color="#f2f2f2")
@@ -386,9 +700,10 @@ mk_plot <- function(mk_gene, prop=F,colorUp=T, diff_dat, dat_tsne_n1, dat_f){
                                                                               alpha=log(marker/count+10e-5))))
         }
         
-        p2 <- p2+scale_color_gradient(low="blue", high="red",name = paste0("log prop\n ",mk_gene))+ 
+        p2 <- p2+scale_color_gradient(low="orange", high="green",name = paste0("log prop\n ",mk_gene))+ 
             theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+ 
+            xlim(min(dat_tsne_n1$tSNE1),max(dat_tsne_n1$tSNE1)) + ylim(min(dat_tsne_n1$tSNE2),max(dat_tsne_n1$tSNE2))
         print(p2)
         
     }else{
@@ -400,9 +715,13 @@ mk_plot <- function(mk_gene, prop=F,colorUp=T, diff_dat, dat_tsne_n1, dat_f){
         }else{
             p1$layers <- c(p1$layers, geom_point(data = tsne_dat[mk!=0,],aes(x=x,y=y,color=marker,alpha=marker),size=0.2))
         }
-        p1 <- p1+scale_color_gradient(low="blue", high="red",name = mk_gene)+ 
+        p1 <- p1+scale_color_gradient(low="orange", high="green",name = mk_gene)+ 
             theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+              panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + 
+            xlim(min(dat_tsne_n1$tSNE1),max(dat_tsne_n1$tSNE1)) + ylim(min(dat_tsne_n1$tSNE2),max(dat_tsne_n1$tSNE2))
+        if(mk_gene=="count"){
+            p1 <- p1+scale_color_gradient(low="green", high="orange",name = mk_gene)
+        }
         print(p1)
     }
 }
@@ -439,7 +758,7 @@ CB2Cluster <- function(CB2Out, tsneOut,sizeFilter=0){
     return(tsneOut)
 }
 
-Calc_upper <- function(dat,lower){
+Calc_retain <- function(dat,lower){
     dat <- FilterGB(dat)
     totals <- unname(colSums(dat))
     o <- order(totals, decreasing=TRUE)
@@ -474,4 +793,36 @@ Calc_upper <- function(dat,lower){
     knee <- 10^(y[new.keep][which.min(curvature)])
     inflection <- 10^(y[right.edge])
     return(list(knee=round(knee),inflection=round(inflection)))
+}
+
+DE <- function(celltype="ExN",gene, diff=T,tsne=Alz_tsne2_all, prop=F){
+    temp_celltype <- rownames(tsne)[tsne$celltype==celltype]
+    
+    #temp_celltype <- temp_celltype[colSums(Alz_r[,temp_celltype])>= brange[1] & 
+    #                                   colSums(Alz_r[,temp_celltype])<= brange[2]]
+    
+    if(diff){
+        temp_celltype <- setdiff(temp_celltype, temp_common)
+    }
+    temp_AD <- rownames(tsne)[tsne$Condition=="AD-pathology"]
+    temp_C <- rownames(tsne)[tsne$Condition=="Control"]
+    
+    exp_AD <- Alz_fAll3[gene,intersect(temp_celltype,temp_AD)]
+    exp_C <- Alz_fAll3[gene,intersect(temp_celltype,temp_C)]
+    
+    if(prop){
+        exp_AD <- exp_AD/tsne[intersect(temp_celltype,temp_AD),]$size
+        exp_C <- exp_C/tsne[intersect(temp_celltype,temp_C),]$size
+    }
+    # exp_AD <- sample(exp_AD,n)
+    # exp_C <- sample(exp_C,n)
+    # message(paste0("Sample size: ", n))
+    
+    tt <- wilcox.test(exp_C,exp_AD)
+    mean(exp_AD)/mean(exp_C)
+
+    return(list(pval=round(-log10(tt$p.value),5), 
+                log2FC=log2(mean(exp_AD)/mean(exp_C)),
+                size=length(exp_C)+length(exp_AD),
+                test=tt))
 }
