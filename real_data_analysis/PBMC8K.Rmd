@@ -179,3 +179,16 @@ mk_plot("count",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBM
 mk_plot("COX8A",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
 
 ```
+
+
+# Revision: Lower the upper threshold to 0.5 * knee_point and see barcodes included
+
+43 more barcodes.
+
+```{r}
+Extra_PBMC8K <- colnames(PBMC8K_r)[colSums(PBMC8K_r)>=0.1*PBMC8K_knee]
+Extra_PBMC8K <- setdiff(Extra_PBMC8K,colnames(PBMC8K_CB2)) 
+
+Htmap_revision(Extra_PBMC8K,PBMC8K_r, background_threshold=100, AddBackground=F)
+
+```

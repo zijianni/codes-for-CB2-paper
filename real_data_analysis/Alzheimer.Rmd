@@ -50,7 +50,6 @@ Alz_knee <- Calc_retain(Alz_r,lower=100)$knee #8136
 
 
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/AlzAll_CB2_ED.RData")
-
 ```
 
 ##Unique Cells in Alz
@@ -190,6 +189,7 @@ C4 <- rownames(Alz_tsne_n1)[check_range(Alz_tsne_n1$y,-1,5) & check_range(Alz_ts
 
 MK_gene <- c("SYT1","SNAP25","GRIN1","SLC17A7","CAMK2A","NRGN","GAD1","GAD2","MBP","MOBP","PLP1","CD74","CSF1R","C3","AQP4","GFAP","FAM107A","SOX9","PDGFRA","VCAN","CSPG4","FLT1","CLDN5")
 C_cand <- c(2,3,4,6,7,8,9,12,13,14,15,16,17,19,20)
+C_cand <- c(20)
 
 for(CC in C_cand){
     fname <- paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz/Alz_newColor_C",CC)
@@ -197,17 +197,17 @@ for(CC in C_cand){
     Alz_sub <- Alz_f[,rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster==CC]]
     n_temp <- names(sort(Matrix::rowMeans(Alz_sub),decreasing = T)[1:500] )
 
-    # tiff(filename =paste0(fname,"_D_%03d.tif"),width=10,height=5,units="cm",res=300,pointsize=10, compression = "lzw")
-    # Htmap(Alz_r[sort(filter_mr(setdiff(n_temp,"MALAT1"))[1:100]),colnames(Alz_sub)],"Alz", Plot = "D", AddBackground = F)
-    # dev.off()
-    
+    tiff(filename =paste0(fname,"_D_%03d.tif"),width=10,height=5,units="cm",res=300,pointsize=10, compression = "lzw")
+    Htmap(Alz_r[sort(filter_mr(setdiff(n_temp,"MALAT1"))[1:100]),colnames(Alz_sub)],"Alz", Plot = "D", AddBackground = F)
+    dev.off()
+
     # tiff(filename =paste0(fname,"_D_marker_%03d.tif"),width=10,height=5,units="cm",res=300,pointsize=10, compression = "lzw")
     # Htmap(Alz_r[MK_gene,rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster==CC]],"Alz",Plot = "D")
     # dev.off()
     
-    tiff(filename =paste0(fname,"_H.tif"),width=15,height=15,units="cm",res=300,pointsize=10, compression = "lzw")
-    Htmap(Alz_r[sort(filter_mr(setdiff(n_temp,"MALAT1"))[1:100]),colnames(Alz_sub)],"Alz", Plot = "H")
-    dev.off()
+    # tiff(filename =paste0(fname,"_H.tif"),width=15,height=15,units="cm",res=300,pointsize=10, compression = "lzw")
+    # Htmap(Alz_r[sort(filter_mr(setdiff(n_temp,"MALAT1"))[1:100]),colnames(Alz_sub)],"Alz", Plot = "H")
+    # dev.off()
     
     # tiff(filename =paste0(fname,"_H_marker.tif"),width=10,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
     # Htmap(Alz_r[MK_gene,rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster==CC]],"Alz", Plot = "H")
@@ -224,7 +224,7 @@ Htmap(Alz_r[sort(filter_mr(setdiff(n_temp,"MALAT1"))[1:100]),colnames(Alz_sub)],
 
 ###marker gene
 ```{r}
-
+MK_gene2 <- MK_gene
 for(GG in MK_gene2){
     print(GG)
     tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Alz/Alz_newColor_",GG,"_CB2.tif"),width=15,height=12,units="cm",res=300,pointsize=10, compression = "lzw")
@@ -405,4 +405,54 @@ ggplot(InN_f, aes(x=id, y=value, fill=variable)) +
 panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
   scale_x_discrete(limits=FC_InN$id)
 dev.off()
+```
+
+
+# Revision: Lower the upper threshold to 0.5 * knee_point and see barcodes included
+
+790 more barcodes. 
+```{r}
+Extra_Alz <- colnames(Alz_r)[colSums(Alz_r)>=0.05*Alz_knee]
+Extra_Alz <- setdiff(Extra_Alz,colnames(AlzAll_CB2)) 
+
+Htmap_revision(Extra_Alz,Alz_r, 
+            background_threshold=100, AddBackground=F)
+
+```
+
+# Revision: Boxplot of Subpop1~5
+
+```{r}
+ggplot(Alz_tsne_n1[Alz_tsne_n1$Cluster%in%c(1:4,6:8,12,14,20),])+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.5)+ guides(colour = guide_legend(override.aes = list(size=5)))
+
+Subpop1 <- c(6)
+Subpop2 <- c(1:4)
+Subpop3 <- c(7,14)
+Subpop4 <- c(8,12)
+Subpop5 <- c(20)
+
+Size_list <- list()
+Size_list$Subpop1 <- rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster==6]
+Size_list$Subpop2 <- rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster%in%c(1:4)]
+Size_list$Subpop3 <- rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster%in%c(7,14)]
+Size_list$Subpop4 <- rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster%in%c(8,12)]
+Size_list$Subpop5 <- rownames(Alz_tsne_n1)[Alz_tsne_n1$Cluster%in%c(20)]
+names(Size_list) <- paste0("Subpop",1:5)
+
+Size_mat <- data.frame(counts=unlist(lapply(Size_list,function(x) colSums(Alz_r[,x]))),
+                       Subpopulation=rep(paste0("Subpop",1:5),
+                                         unlist(lapply(Size_list,length))),
+                       group=ifelse(unlist(Size_list)%in%diff_Alz$CB2_only,"CB2","common"))
+Size_mat$subpopulation <- paste0(Size_mat$Subpopulation,"_",Size_mat$group)
+
+ggplot(data=Size_mat)+geom_boxplot(aes(y=counts,x=subpopulation,color=Subpopulation))+scale_y_log10()
+
+
+```
+
+# Revision: Distribution plot of Subpop5 using 6 marker genes.
+```{r}
+Htmap(Alz_r[c("GFAP","AQP4","FAM107A","MBP","MOBP","PLP1"),Size_list$Subpop5],"Alz", Plot = "D", AddBackground = F)QP
+
+rowMeans(Alz_r[c("GFAP","AQP4","FAM107A","MBP","MOBP","PLP1"),Size_list$Subpop5])
 ```
