@@ -29,7 +29,7 @@ library(Seurat)
 source("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/functions_forReal.R")
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC8K.RData")
 
-PBMC8K_knee <- barcodeRanks(PBMC8K_r,lower = 100)@metadata$knee
+PBMC8K_knee <- Calc_retain(PBMC8K_r,100)$knee #3595
 
 PBMC8K_inflection <- barcodeRanks(PBMC8K_r,lower = 100)@metadata$inflection
 
@@ -181,14 +181,56 @@ mk_plot("COX8A",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBM
 ```
 
 
-# Revision: Lower the upper threshold to 0.5 * knee_point and see barcodes included
 
-43 more barcodes.
+# Revision: tSNE plot of background barcodes and CB2 cells
 
 ```{r}
-Extra_PBMC8K <- colnames(PBMC8K_r)[colSums(PBMC8K_r)>=0.1*PBMC8K_knee]
-Extra_PBMC8K <- setdiff(Extra_PBMC8K,colnames(PBMC8K_CB2)) 
+set.seed(SEED)
+Bc_small <- colnames(PBMC8K_r)[colSums(PBMC8K_r)<=100]
+Bc_large <- colnames(PBMC8K_r)[colSums(PBMC8K_r)>100]
+Bc_100 <- colnames(PBMC8K_r)[colSums(PBMC8K_r)%in%101:500]
+BG_small <- sample(Bc_small,2000)
+BG_large <- sample(setdiff(Bc_large,colnames(PBMC8K_f)),2000)
+BG_100 <- sample(setdiff(Bc_100,colnames(PBMC8K_f)),2000)                                                                
 
-Htmap_revision(Extra_PBMC8K,PBMC8K_r, background_threshold=100, AddBackground=F)
+PBMC8K_CBr <- PBMC8K_r[,colnames(PBMC8K_f)]
+Cell_100 <- colnames(PBMC8K_CBr)[colSums(PBMC8K_CBr)%in%101:500] 
+
+PBMC8K_Sub3 <- CreateSeuratObject(counts = 
+        cbind(PBMC8K_r[,BG_small],PBMC8K_r[,BG_100],PBMC8K_f[,Cell_100]), project = "PBMC8K")
+PBMC8K_Sub3$new.ident <- rep(c("Background (<=100)","Background (101~500)","CB2 (101~500)"),
+                          c(2000,2000,length(Cell_100)))
+PBMC8K_Sub3 <- FindVariableFeatures(PBMC8K_Sub3,nfeatures = 4000)
+PBMC8K_Sub3 <- ScaleData(PBMC8K_Sub3)
+PBMC8K_Sub3 <- RunPCA(PBMC8K_Sub3)
+set.seed(SEED)
+PBMC8K_Sub3 <- RunTSNE(PBMC8K_Sub3,check_duplicates=FALSE)
+DimPlot(PBMC8K_Sub3,reduction = "tsne",group.by = "new.ident",cols = viridis::viridis(3))
+```
+
+
+```{r}
+Ent_mat1 <- PBMC8K_f[,diff_PBMC8K$CB2_only[diff_PBMC8K$CB2_only%in%colnames(PBMC8K_f)]]
+
+com_mat1 <- PBMC8K_f[,diff_PBMC8K$Common_b[diff_PBMC8K$Common_b%in%colnames(PBMC8K_f)]]
+
+ED_mat1 <- PBMC8K_f[,diff_PBMC8K$ED_only[diff_PBMC8K$ED_only%in%colnames(PBMC8K_f)]]
+
+
+PBMC8K_S <- CreateSeuratObject(counts = cbind(Ent_mat1, PBMC8K_r[,BG_small],PBMC8K_r[,BG_large]), project = "PBMC8K")
+
+PBMC8K_S$new.ident <- c(rep("Unique in CB2",ncol(Ent_mat1)),
+                     rep("Background (<=100)",2000),
+                     rep("Background (>100)",2000))
+
+PBMC8K_S <- FindVariableFeatures(PBMC8K_S, nfeatures = 4000)
+PBMC8K_S <- ScaleData(PBMC8K_S)
+PBMC8K_S <- RunPCA(PBMC8K_S)
+set.seed(SEED)
+PBMC8K_S <- RunTSNE(PBMC8K_S, dims = 1:50, check_duplicates = FALSE)
+
+tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Revised/1-2-2.tif"),width=16,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
+DimPlot(PBMC8K_S, reduction = "tsne", group.by = "new.ident",cols = c(viridis::viridis(3)))
+dev.off()
 
 ```
