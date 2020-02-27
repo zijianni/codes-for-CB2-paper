@@ -155,15 +155,15 @@ FDR_E <- unlist(lapply(Res_list,function(x) x$Stat[2,1]))
 FDR_ED <- unlist(lapply(Res_list,function(x) x$Stat[2,2]))
 Power_Inc <- unlist(lapply(Res_list,function(x) x$Power_diff))
 
-G1E <- unlist(lapply(Res_list,function(x) x$TP_CB2_adj[2,ncol(x$TP_CB2_adj)]))
-G1ED <- unlist(lapply(Res_list,function(x) x$TP_ED_adj[2,ncol(x$TP_ED_adj)]))
-G2E <- unlist(lapply(Res_list,function(x) x$TP_CB2_adj[4,ncol(x$TP_CB2_adj)]))
-G2ED <- unlist(lapply(Res_list,function(x) x$TP_ED_adj[4,ncol(x$TP_ED_adj)]))
-G3E <- unlist(lapply(Res_list,function(x) x$TP_CB2_adj[6,ncol(x$TP_CB2_adj)]))
-G3ED <- unlist(lapply(Res_list,function(x) x$TP_ED_adj[6,ncol(x$TP_ED_adj)]))
-FDR_E <- unlist(lapply(Res_list,function(x) x$Stat_adj[2,1]))
-FDR_ED <- unlist(lapply(Res_list,function(x) x$Stat_adj[2,2]))
-Power_Inc <- unlist(lapply(Res_list,function(x) x$Power_diff_adj))
+# G1E <- unlist(lapply(Res_list,function(x) x$TP_CB2_adj[2,ncol(x$TP_CB2_adj)]))
+# G1ED <- unlist(lapply(Res_list,function(x) x$TP_ED_adj[2,ncol(x$TP_ED_adj)]))
+# G2E <- unlist(lapply(Res_list,function(x) x$TP_CB2_adj[4,ncol(x$TP_CB2_adj)]))
+# G2ED <- unlist(lapply(Res_list,function(x) x$TP_ED_adj[4,ncol(x$TP_ED_adj)]))
+# G3E <- unlist(lapply(Res_list,function(x) x$TP_CB2_adj[6,ncol(x$TP_CB2_adj)]))
+# G3ED <- unlist(lapply(Res_list,function(x) x$TP_ED_adj[6,ncol(x$TP_ED_adj)]))
+# FDR_E <- unlist(lapply(Res_list,function(x) x$Stat_adj[2,1]))
+# FDR_ED <- unlist(lapply(Res_list,function(x) x$Stat_adj[2,2]))
+# Power_Inc <- unlist(lapply(Res_list,function(x) x$Power_diff_adj))
 
 
 plot(rep(2,length(NM))~factor(NM),ylim=c(0,1),ylab="power",xlab=NULL)
@@ -198,7 +198,7 @@ NM_order <- c("Alzheimer","PBMC8K","PBMC33K", "mbrain1K","mbrain9K","PanT4K","MA
 FDR_plot <- data.frame(FDR=c(FDR_E,FDR_ED),Dataset=NM,Method=rep(c("CB2","ED"),each=10))
 
 
- tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/FDR_new1.tif",width=30,height=6,units="cm",res=300, compression = "lzw")
+ tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Revised/FDR_50.tif",width=30,height=6,units="cm",res=300, compression = "lzw")
 ggplot(data=FDR_plot,aes(y=FDR*100,x=Dataset))+geom_col(aes(fill=Method),position="dodge")+geom_hline(yintercept = 1,linetype="dashed")+ylab("FDR (%)")+ylim(c(0,2))+
   scale_x_discrete(limits=(NM_order))+ theme_bw()+theme(axis.text=element_text(size=12),legend.position="none", panel.border = element_blank(), panel.grid.major = element_blank(),
 panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
@@ -209,7 +209,7 @@ sim_plot <- data.frame(Power=c(G1E,G1ED,G2E,G2ED,G3E,G3ED),Group=rep(c("G1","G1.
 
 for(temp in NM){
     temp_plot <- sim_plot[sim_plot$Dataset==temp,]
-    fname <- paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/Power_old_",temp,".tif")
+    fname <- paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Revised/Power_150_adj_",temp,".tif")
     tiff(filename =fname,width=3.5,height=8,units="cm",res=300, compression = "lzw")
     gp <- ggplot(data=temp_plot,aes(y=Power,x=Group))+geom_col(aes(fill=Method),position="dodge")+labs(title=temp)+ylim(0,1)+ theme_bw()+ theme(plot.title = element_text(size=12), legend.position = "none", panel.border = element_blank(), panel.grid.major = element_blank(),
 panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+xlab(NULL)
@@ -285,7 +285,7 @@ dev.off()
 
 ```
 
-# Check the performance of simple hard threshold
+# Revision: Check the performance of simple hard threshold
 
 ```{r}
 
@@ -366,6 +366,7 @@ save(MALT_HARD,mbrain_HARD,mbrain1K_HARD,PBMC33K_HARD, PBMC4K_HARD,PBMC8K_HARD,A
 ```
 
 ```{r}
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_2_8_HARD_Threshold.RData")
 NM <- c("Alzheimer","jurkat","MALT","mbrain9K","mbrain1K","PanT4K","PBMC33K","PBMC4K","PBMC8K","T293")
 
 HARD_list <- list()
@@ -380,6 +381,7 @@ HARD_list[[8]] <- PBMC4K_HARD
 HARD_list[[9]] <- PBMC8K_HARD
 HARD_list[[10]] <- T293_HARD
 
+Prop <- c(0.9,0.5)
 HARD_power <- matrix(0,length(Prop),length(NM))
 colnames(HARD_power) <- c(NM)
 rownames(HARD_power) <- Prop
@@ -412,6 +414,7 @@ Res_list[[7]] <- PBMC33K_SIM
 Res_list[[8]] <- PBMC4K_SIM
 Res_list[[9]] <- PBMC8K_SIM
 Res_list[[10]] <- T293_SIM
+names(Res_list) <- NM
 
 CB2_power <- unlist(lapply(Res_list,function(x) x$Stat[1,1]))
 CB2_FDR <- unlist(lapply(Res_list,function(x) x$Stat[2,1]))
@@ -435,3 +438,103 @@ larger than background barcodes.
 In reality if library size is very large, there will accordingly be more ambient 
 RNAs inducing large background barcodes. Thus lower the threshold still 
 has the risk of including too many background barcodes.
+
+
+# Revision: Plotting
+```{r}
+FDR_plot <- data.frame(FDR=c(CB2_FDR,HARD_FDR[1,],HARD_FDR[2,]),
+                       Dataset=NM,Method=rep(c("CB2","0.9","0.5"),each=10))
+
+NM_order <- c("Alzheimer","PBMC8K","PBMC33K", "mbrain1K","mbrain9K","PanT4K","MALT", "PBMC4K","jurkat","T293")
+ggplot(data=FDR_plot,aes(y=FDR*100,x=Dataset))+geom_col(aes(fill=Method),position="dodge")+geom_hline(yintercept = 1,linetype="dashed")+ylab("FDR (%)")+ylim(c(0,70))+
+  scale_x_discrete(limits=(NM_order))+ theme_bw()+theme(axis.text=element_text(size=12), panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+Power_plot <- data.frame(Power=c(CB2_power,HARD_power[1,],HARD_power[2,]),
+                       Dataset=NM,Method=rep(c("CB2","0.9","0.5"),each=10))
+ggplot(data=Power_plot,aes(y=Power,x=Dataset))+geom_col(aes(fill=Method),position="dodge")+
+    ylab("Power")+ylim(c(0,1))+scale_x_discrete(limits=(NM_order))+ theme_bw()+theme(axis.text=element_text(size=12), panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+```
+
+# Revision: Try different lower threshold (50, 150)
+
+Under hard setting, genes in simulated real cells are not shuffled. This is closer to real world. Set `new_sim=F`.
+
+
+```{r}
+
+######################
+set.seed(SEED)
+mbrain_SIM <- SIM2(dat = mbrain_r, ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+set.seed(SEED)
+MALT_SIM <- SIM2(dat = MALT_r, ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+set.seed(SEED)
+PBMC8K_SIM <- SIM2(dat = PBMC8K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+set.seed(SEED)
+mbrain1K_SIM <- SIM2(dat = mbrain1K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+set.seed(SEED)
+Alz_SIM <- SIM2(dat = Alz_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+set.seed(SEED)
+T293_SIM <- SIM2(dat = T293_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+set.seed(SEED)
+PBMC4K_SIM <- SIM2(dat = PBMC4K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+set.seed(SEED)
+jurkat_SIM <- SIM2(dat = jurkat_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+set.seed(SEED)
+PanT4K_SIM <- SIM2(dat = PanT4K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+set.seed(SEED)
+PBMC33K_SIM <- SIM2(dat = PBMC33K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 50)
+
+save(MALT_SIM,mbrain_SIM,mbrain1K_SIM,PBMC33K_SIM, PBMC4K_SIM,PBMC8K_SIM,Alz_SIM,
+     T293_SIM,jurkat_SIM,PanT4K_SIM,
+     file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_2_24_50.RData")
+
+######################
+set.seed(SEED)
+mbrain_SIM <- SIM2(dat = mbrain_r, ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+set.seed(SEED)
+MALT_SIM <- SIM2(dat = MALT_r, ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+set.seed(SEED)
+PBMC8K_SIM <- SIM2(dat = PBMC8K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+set.seed(SEED)
+mbrain1K_SIM <- SIM2(dat = mbrain1K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+set.seed(SEED)
+Alz_SIM <- SIM2(dat = Alz_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+set.seed(SEED)
+T293_SIM <- SIM2(dat = T293_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+set.seed(SEED)
+PBMC4K_SIM <- SIM2(dat = PBMC4K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+set.seed(SEED)
+jurkat_SIM <- SIM2(dat = jurkat_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+set.seed(SEED)
+PanT4K_SIM <- SIM2(dat = PanT4K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+set.seed(SEED)
+PBMC33K_SIM <- SIM2(dat = PBMC33K_r,ED_knee = T,new_sim = F,Ncores=6, threshold = 150)
+
+save(MALT_SIM,mbrain_SIM,mbrain1K_SIM,PBMC33K_SIM, PBMC4K_SIM,PBMC8K_SIM,Alz_SIM,
+     T293_SIM,jurkat_SIM,PanT4K_SIM,
+     file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/sim/sim_2_24_150.RData")
+
+
+```
+

@@ -208,8 +208,8 @@ SIM2 <-
                 
                 res_CB2 <-
                     CB2FindCell(dat_sim1,
-                                background_threshold = threshold,
-                                FDR_threshold = FDR, retain = retain_temp,
+                                lower = threshold,
+                                FDR_threshold = FDR, upper = retain_temp,
                                 ...)
                 
                 res1 <- colnames(GetCellMat(res_CB2))
