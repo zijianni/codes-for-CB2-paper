@@ -23,30 +23,37 @@ suppressMessages(library(gplots))
 library(scran)
 library(irlba)
 library(scater)
-library(enrichR)
 library(Seurat)
+library(viridis)
+library(patchwork)
 
 source("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/functions_forReal.R")
 load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/PBMC8K.RData")
+
+PBMC8K_r <- PBMC8K_r[,colSums(PBMC8K_r)>0]
 
 PBMC8K_knee <- Calc_retain(PBMC8K_r,100)$knee #3595
 
 PBMC8K_inflection <- barcodeRanks(PBMC8K_r,lower = 100)@metadata$inflection
 
 
-set.seed(SEED)
-eOut <- emptyDrops(PBMC8K_r,lower=100)
-PBMC8K_ED <- PBMC8K_r[,ifelse(is.na(eOut$FDR),FALSE,eOut$FDR<=0.01)]
-set.seed(SEED)
-PBMC8K_CB2Out <- CB2FindCell(PBMC8K_r)
-PBMC8K_CB2 <- GetCellMat(PBMC8K_CB2Out)
+# set.seed(SEED)
+# eOut <- emptyDrops(PBMC8K_r,lower=100)
+# PBMC8K_ED <- PBMC8K_r[,ifelse(is.na(eOut$FDR),FALSE,eOut$FDR<=0.01)]
+# set.seed(SEED)
+# PBMC8K_CB2Out <- CB2FindCell(PBMC8K_r)
+# PBMC8K_CB2 <- GetCellMat(PBMC8K_CB2Out)
+# 
+# save(PBMC8K_ED,PBMC8K_CB2,file = "~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/PBMC8K_CB2_ED.RData")
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/PBMC8K_CB2_ED.RData")
 ```
 
 
 ##PBMC8K
 
 ```{r,echo=F}
-cat("Compare between cor and ED\n")
+cat("Compare between CB2 and ED\n")
 
 cat("Whole result comparison: \n")
 diff_PBMC8K <- barcode_diff(PBMC8K_CB2,PBMC8K_ED)
@@ -116,7 +123,7 @@ load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/PBMC
 # PBMC8K_S <- RunTSNE(PBMC8K_S, dims = 1:50)
 # DimPlot(PBMC8K_S, reduction = "tsne")
 
-load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/PBMC8K_tsne_n1.RData")
+
 
 # PBMC8K_tsne_n1 <- as.data.frame(PBMC8K_S@reductions$tsne@cell.embeddings)
 # PBMC8K_tsne_n1 <- cbind(PBMC8K_tsne_n1,c(rep("Common",dim(com_mat1)[2]),
@@ -130,39 +137,48 @@ load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/PBMC
 # PBMC8K_knee_bc <- names(which(Matrix::colSums(PBMC8K_CB2)>=PBMC8K_knee))
 # PBMC8K_tsne_n1$Group[which(colnames(com_mat1)%in%PBMC8K_knee_bc)] <- "Above_knee_point"
 
+
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/PBMC8K_tsne_n1.RData")
+
+
 tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/PBMC8K/PBMC8K_tSNE.tif",width=22,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
 ggplot(PBMC8K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Group),size=0.2)+
   scale_color_manual(values=c("deeppink3","gold","deeppink1","black")) +  theme_bw() + theme(axis.text = element_blank(),axis.title = element_blank(),legend.position = "none",panel.border = element_rect(colour = "black", fill=NA, size=1.5), panel.grid.major = element_blank(),
 panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
 dev.off()
 
-PBMC8K_tsne_n1$Cluster <- as.character(PBMC8K_S$seurat_clusters)
+# PBMC8K_tsne_n1$Cluster <- as.character(PBMC8K_S$seurat_clusters)
 
-tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/PBMC8K_Cluster.tif",width=25,height=20,units="cm",res=300,pointsize=10, compression = "lzw")
-ggplot(PBMC8K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.2)+
+gp <- ggplot(PBMC8K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.2)+
   scale_color_discrete(breaks=unique(PBMC8K_tsne_n1$Cluster))+ guides(colour = guide_legend(override.aes = list(size=2)))+ theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
 panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
-dev.off()
+gp <- LabelClusters(gp,"Cluster",size=5)
+print(gp)
 
+# 
+# PBMC8K_tsne_n1$Size <- colSums(PBMC8K_f[,rownames(PBMC8K_tsne_n1)])
+# ggplot(PBMC8K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Size),size=0.2)+theme_bw() +
+#     scale_color_viridis()
 ```
 
 ```{r}
 MK_gene <- c("MT","count","PF4","PPBP","CD19","CD79A","CD14","CD68","CCR7","CD27","CD8A","CD8B")
-C_cand <- c(0,1,3,4,5,7,12,14)
+C_cand <- c(0,1,3,4,5,7,12,14,16)
 
 for(CC in C_cand){
-    fname <- paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots/PBMC8K/NEW_PBMC8K_C",CC)
+    fname <- paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots_newH/PBMC8K/NEW_PBMC8K_C",CC)
     
     PBMC8K_sub <- PBMC8K_f[,rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster==CC]]
     n_temp <- names(sort(Matrix::rowMeans(PBMC8K_sub),decreasing = T)[1:500] )
 
-    tiff(filename =paste0(fname,"_D_%03d.tif"),width=10,height=5,units="cm",res=300,pointsize=10, compression = "lzw")
-    Htmap(PBMC8K_r[sort(filter_mr(n_temp)[2:101]),colnames(PBMC8K_sub)],"PBMC8K", Plot = "D",AddBackground = F)
-    dev.off()
+    # tiff(filename =paste0(fname,"_D_%03d.tif"),width=10,height=5,units="cm",res=300,pointsize=10, compression = "lzw")
+    # Htmap(PBMC8K_r[sort(filter_mr(n_temp)[2:101]),colnames(PBMC8K_sub)],"PBMC8K", Plot = "D",AddBackground = F)
+    # dev.off()
     
     
     tiff(filename =paste0(fname,"_H.tif"),width=15,height=15,units="cm",res=300,pointsize=10, compression = "lzw")
-    Htmap(PBMC8K_r[sort(filter_mr(n_temp)[2:101]),colnames(PBMC8K_sub)],"PBMC8K", Plot = "H")
+    Htmap(PBMC8K_r[sort(filter_mr(n_temp)[2:101]),colnames(PBMC8K_sub)],"PBMC8K", 
+          Plot = "H", equal = T, attenuate = F)
     dev.off()
     
 }
@@ -174,10 +190,11 @@ for(GG in MK_gene2){
     mk_plot(GG,diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
     dev.off()
 }
+
 mk_plot("MT",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
 mk_plot("count",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
 mk_plot("COX8A",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
-
+mk_plot("CD36",diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
 ```
 
 
@@ -233,4 +250,136 @@ tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscrip
 DimPlot(PBMC8K_S, reduction = "tsne", group.by = "new.ident",cols = c(viridis::viridis(3)))
 dev.off()
 
+```
+
+# Revision: Barcode total count plot 
+
+```{r,fig.height=3.5, fig.width=12}
+PBMC8K_bg <- setdiff(colnames(PBMC8K_r),colnames(PBMC8K_CB2))
+PBMC8K_bg_count <- colSums(PBMC8K_r[,PBMC8K_bg])
+PBMC8K_bg_ED <- setdiff(colnames(PBMC8K_r),colnames(PBMC8K_ED))
+PBMC8K_bg_ED_count <- colSums(PBMC8K_r[,PBMC8K_bg_ED])
+PBMC8K_CB2_count <- colSums(PBMC8K_CB2)
+PBMC8K_ED_count <- colSums(PBMC8K_ED)
+PBMC8K_CB2extra_count <- colSums(PBMC8K_r[,diff_PBMC8K$CB2_only])
+
+
+ht_CB2 <- data.frame(UMI_count=c(PBMC8K_CB2_count,PBMC8K_bg_count),
+                     group=rep(c("1.CB2","2.Background"),
+                               c(length(PBMC8K_CB2_count),length(PBMC8K_bg_count))))
+ht_CB2extra <- data.frame(UMI_count=c(PBMC8K_CB2extra_count,PBMC8K_bg_count),
+                     group=rep(c("1.CB2","2.Background"),
+                               c(length(PBMC8K_CB2extra_count),length(PBMC8K_bg_count))))
+
+ht_ED <- data.frame(UMI_count=c(PBMC8K_ED_count,PBMC8K_bg_ED_count),
+                     group=rep(c("1.ED","2.Background"),
+                               c(length(PBMC8K_ED_count),length(PBMC8K_bg_ED_count))))
+
+gp1 <- ggplot(data=ht_CB2,aes(UMI_count,fill=group))+geom_histogram(position="dodge",bins = 40)+
+    scale_x_log10(limits=c(100,PBMC8K_knee+1000))+ylim(c(0,1500))+
+    scale_fill_discrete(labels = c("CB2", "Background"))+ 
+    theme(legend.position="top",legend.title = element_blank())
+
+gp2 <- ggplot(data=ht_CB2extra,aes(UMI_count,fill=group))+geom_histogram(position="dodge",bins = 40)+
+    scale_x_log10(limits=c(100,PBMC8K_knee+1000))+ylim(c(0,1500))+
+    scale_fill_discrete(labels = c("Additional CB2", "Background"))+ 
+    theme(legend.position="top",legend.title = element_blank())
+
+gp3 <- ggplot(data=ht_ED,aes(UMI_count,fill=group))+geom_histogram(position="dodge",bins = 40)+
+    scale_x_log10(limits=c(100,PBMC8K_knee+1000))+ylim(c(0,1500))+
+    scale_fill_discrete(labels = c("EmptyDrops", "Background"))+
+    theme(legend.position="top",legend.title = element_blank())
+
+layout <- "ABC"
+plot(gp1+gp2+gp3+plot_layout(design = layout))
+```
+
+Calculate proportion of CB2 additional cells falling under 25th quantile of total count of all cells tested out by CB2 and ED:
+
+```{r}
+PBMC8K_tested_count <- colSums(PBMC8K_r[,c(diff_PBMC8K_knee$Common_b,diff_PBMC8K_knee$CB2_only,diff_PBMC8K_knee$ED_only)])
+q25 <- quantile(PBMC8K_tested_count,0.25)
+mean(PBMC8K_CB2extra_count<q25) # 0.30
+```
+
+# Revision: Look into Subpop1-3
+
+```{r}
+Subpop1 <- c(5,7,17)
+Subpop2 <- c(0,11,15)
+Subpop3 <- 16
+# ggplot(PBMC8K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.2)+
+#   scale_color_discrete(breaks=unique(PBMC8K_tsne_n1$Cluster))
+# 
+# PBMC8K_tsne_n1$Cluster[PBMC8K_tsne_n1$Cluster%in%Subpop1] <- "Subpop1"
+# PBMC8K_tsne_n1$Cluster[PBMC8K_tsne_n1$Cluster%in%Subpop2] <- "Subpop2"
+# PBMC8K_tsne_n1$Cluster[PBMC8K_tsne_n1$Cluster%in%Subpop3] <- "Subpop3"
+# ggplot(PBMC8K_tsne_n1)+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.2)+
+#   scale_color_discrete(breaks=unique(PBMC8K_tsne_n1$Cluster))
+
+Subpop <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c(Subpop1,Subpop2,Subpop3)]
+sum(Subpop%in%diff_PBMC8K$Common_b)
+sum(Subpop%in%diff_PBMC8K$CB2_only)
+
+```
+
+# Revision: Marker gene plot for all annotated cell types
+
+```{r, fig.width=5, fig.height=6}
+# C16: Megakaryocytes. PF4, PPBP
+# C0, C11, C15: CD14+ Monocytes. CD14, CD68
+# C9: NK. NKG7
+# C5, C7, C17: B cells. CD79A, CD19
+# C3, C1, C10, C2, C4, C8: T cells. CD3D
+Mk_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("16")]
+Mn_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("0","11","15")]
+NK_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("9")]
+B_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("5","7","17")]
+T_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("1","2","3","4","8","10")]
+
+
+# Sort by median cell size
+summary(colSums(PBMC8K_f[,Mk_cell])) # 866.3   5
+summary(colSums(PBMC8K_f[,Mn_cell])) # 1992.0   2
+summary(colSums(PBMC8K_f[,NK_cell])) # 2067    1
+summary(colSums(PBMC8K_f[,B_cell])) # 1874   4
+summary(colSums(PBMC8K_f[,T_cell])) # 1877   3
+
+
+gp_T <- mk_hist(c("CD3D"),T_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
+    labs(title="T cells - Subpop4")
+gp_B <- mk_hist(c("CD79A","CD19"),B_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
+    labs(title="B cells - Subpop2")
+gp_NK <- mk_hist(c("NKG7"),NK_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
+    labs(title="NK cells - Subpop5")
+gp_Mk <- mk_hist(c("PF4","PPBP"),Mk_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
+    labs(title="Megakaryocytes - Subpop3")
+gp_Mn <- mk_hist(c("CD14","CD68"),Mn_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
+    labs(title="CD14+ Monocytes - Subpop1")
+
+layout <- "A
+B
+C
+D
+E"
+
+plot(gp_NK + gp_Mn + gp_T + gp_B + gp_Mk + plot_layout(design = layout))
+
+
+tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots_newH/PBMC8K/PBMC8K_marker_%03d.tif",width=5,height=1.2,units="in",res=300, compression = "lzw")
+plot(gp_NK)
+plot(gp_Mn)
+plot(gp_T)
+plot(gp_B)
+plot(gp_Mk)
+dev.off()
+
+
+MK_gene2 <-c("NKG7","CD14","CD3D","CD19","PF4")
+for(GG in MK_gene2){
+    print(GG)
+    tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots_newH/PBMC8K/PBMC8K_",GG,".tif"),width=7,height=6,units="cm",res=300,pointsize=10, compression = "lzw")
+    mk_plot(GG,diff_dat = diff_PBMC8K, dat_tsne_n1 = PBMC8K_tsne_n1,dat_f = PBMC8K_f)
+    dev.off()
+}
 ```
