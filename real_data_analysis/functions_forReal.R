@@ -10,210 +10,6 @@ barcode_diff <- function(dat_CB2, dat_ED, printing = T, names = c("CB2", "ED")) 
   return(list(Common_b = Common_b, CB2_only = CB2_only, ED_only = ED_only, Sum = res))
 }
 
-down_sample <- function(x, size) {
-  res <- rep(0, length(x))
-  names(res) <- names(x)
-  tmp <- rep(names(x), x)
-  tmp_down <- table(sample(tmp, size))
-  res[names(tmp_down)] <- tmp_down
-  return(res)
-}
-
-k_means <- function(dat, k = 10, Npcs = 100, prefilter = T) {
-  if (prefilter) {
-    nzero <- which(Matrix::rowSums(dat) != 0)
-    dat <- dat[nzero, ]
-  }
-  
-  dat <- t(dat)
-  obj_pca <- prcomp_irlba(dat, n = Npcs)
-  dat <- obj_pca$x
-  return(kmeans(dat, centers = k)$cluster)
-}
-
-run_tsne <- function(dat, perplexity = 30, verbose = F, PCA = T, Npcs = 100, prefilter = T, PCA_scale = F) {
-  bname <- colnames(dat)
-  bc <- Matrix::colSums(dat)
-  
-  if (prefilter) {
-    nzero <- which(Matrix::rowSums(dat) != 0)
-    dat <- dat[nzero, ]
-  }
-  dat <- t(dat)
-  if (PCA) {
-    obj_pca <- prcomp_irlba(dat, n = Npcs, scale. = PCA_scale)
-    dat <- obj_pca$x
-  } else{
-    dat <- as.matrix(dat)
-  }
-  if (anyDuplicated(dat)) {
-    k <- ncol(dat)
-    for (i in which(duplicated(dat))) {
-      dat[i, ] <- dat[i, ] + rnorm(k, 0, 10e-5)
-    }
-  }
-  obj <- Rtsne(dat, verbose = verbose, perplexity = perplexity)
-  obj <- obj$Y
-  rownames(obj) <- bname
-  return(obj)
-}
-
-
-
-exp_heatmap <-
-  function(dat,
-           main = NULL,
-           filter_threshold = 1,
-           labCol = F,
-           ...) {
-    dat <- dat[Matrix::rowSums(dat) >= filter_threshold, ]
-    dat <- log(as.matrix((dat)) + 1)
-    
-    colors = c(seq(min(dat, na.rm = T), max(dat, na.rm = T), length = 200))
-    my_palette <- colorRampPalette(c("black", "red"))(n = 199)
-    #
-    heatmap.2(
-      dat,
-      col = my_palette,
-      breaks = colors,
-      dendrogram = 'none',
-      symm = F,
-      tracecol = NA,
-      density.info = "none",
-      lwid = c(1, 4),
-      lhei = c(1, 6),
-      labCol = labCol,
-      main = ifelse(
-        is.null(main),
-        paste0(
-          " \nlog(x+1) transformed expression, row column reordered. ",
-          dim(dat)[1],
-          " genes ",
-          dim(dat)[2],
-          " cells.\nGene filter threshold=",
-          filter_threshold
-        ),
-        main
-      ),
-      ...
-    )
-}
-
-cor_heatmap <- function(dat,
-                        main = NULL,
-                        dendrogram = 'none',
-                        ...) {
-  colors = c(seq(-1, 1, length = 200))
-  my_palette <-
-    colorRampPalette(c("green", "black", "red"))(n = 199)
-  cor_temp <- sparse_cor(dat)
-  heatmap.2(
-    cor_temp,
-    col = my_palette,
-    breaks = colors,
-    dendrogram = dendrogram,
-    symm = T,
-    tracecol = NA,
-    lwid = c(1, 4),
-    density.info = "none",
-    lhei = c(1, 6),
-    main = paste0(main, " \ncorrelation, reordered. ", dim(dat)[2], " cells"),
-    ...
-  )
-}
-
-SIMFUN_bg <- function(raw.mat,
-                      threshold = 100,
-                      remove_protein = T) {
-  if (remove_protein) {
-    protein <- grep(pattern = "TotalSeqB", x = rownames(raw.mat))
-    if (length(protein) > 0) {
-      raw.mat <- raw.mat[-protein, ]
-    }
-    
-  }
-  
-  stats <- barcodeRanks(raw.mat, lower = threshold)
-  
-  # Assuming all cells below the inflection point are empty droplets.
-  totals <- stats$total
-  empty.limit <- stats@metadata$inflection
-  ambient.prof <- rowSums(raw.mat[, totals <= empty.limit])
-  empty.totals <- totals[totals <= empty.limit]
-  
-  # Scrambling to generate resampled empty droplets.
-  gene.ids <- rep(seq_along(ambient.prof), ambient.prof)
-  gene.ids <- sample(gene.ids)
-  cell.ids <- rep(seq_along(empty.totals), empty.totals)
-  resampled <-
-    makeCountMatrix(gene.ids, cell.ids, all.genes = rownames(raw.mat))
-  colnames(resampled) <- paste0("bg_", 1:ncol(resampled))
-  
-  # Completed.
-  return(resampled)
-}
-
-
-SIM_bg <- function(dat,
-                   threshold = 100,
-                   remove_protein = T) {
-  if (remove_protein) {
-    protein <- grep(pattern = "TotalSeqB", x = rownames(dat))
-    if (length(protein) > 0) {
-      dat <- dat[-protein, ]
-    }
-    
-  }
-  brank <- barcodeRanks(dat, lower = threshold)
-  inflection <-
-    ifelse(is.null(brank$inflection),
-           brank@metadata$inflection,
-           brank$inflection)
-  
-  dat_bg1 <- dat[, Matrix::colSums(dat) %in% (1:inflection)]
-  g_name <- rownames(dat_bg1)
-  bc_dist <- Matrix::colSums(dat_bg1)
-  #str(bc_dist)
-  bg_dist <- Matrix::rowSums(dat_bg1)
-  #str(bg_dist)
-  #bg_pool <- rep(names(bg_dist),bg_dist)
-  bg_prop <- goodTuringProportions(bg_dist)
-  bc_t <- table(bc_dist)
-  
-  ##dat_bg1 is the new background
-  dat_tmp <- dat_bg1[, 0]
-  for (i in 1:length(table(bc_dist))) {
-    #print(i)
-    if (bc_t[i] %/% 5000 > 0) {
-      for (j in 1:(bc_t[i] %/% 5000)) {
-        #print(j)
-        dat_tmp <-
-          cbind(dat_tmp, rmultinom(5000, names(bc_t)[i], bg_prop))
-      }
-      dat_tmp <-
-        cbind(dat_tmp, rmultinom(bc_t[i] %% 5000, names(bc_t)[i], bg_prop))
-    } else{
-      dat_tmp <- cbind(dat_tmp, rmultinom(bc_t[i], names(bc_t)[i], bg_prop))
-      
-    }
-    
-    #if(i%%10000==0) print(i)
-  }
-  
-  dat_bg1 <- dat_tmp
-  colnames(dat_bg1) <- paste0("bg_", 1:ncol(dat_bg1))
-  
-  return(dat_bg1)
-  
-}
-
-reorder_mat <- function(mat, rate = 0.1) {
-  N_row <- as.integer(nrow(mat) * rate)
-  x <- 1:nrow(mat)
-  reorder_row <- sample(x, N_row)
-  x[sort(reorder_row)] <- reorder_row
-  return(mat[x, ])
-}
 
 filter_mr <- function(x) {
   tmp <- grep(pattern = "\\<RP", x = x)
@@ -235,218 +31,15 @@ filter_mr <- function(x) {
   return(x)
 }
 
-Upsample <- function(x, target_count) {
-  p <- x / sum(x)
-  return(rmultinom(1, target_count, p))
-}
-
-SIM2 <-
-  function(n = 5,
-           dat,
-           dat_bg = NULL,
-           threshold = 100,
-           n_large = 2000,
-           n_middle = 2000,
-           n_small = 2000,
-           new_sim = T,
-           remove_protein = T,
-           FDR = 0.01,
-           reorder_rate = 0.1,
-           threegroup = T,
-           isEBDrop = F,
-           usePackage = T,
-           ...) {
-    if (remove_protein) {
-      protein <- grep(pattern = "TotalSeqB", x = rownames(dat))
-      if (length(protein) > 0) {
-        dat <- dat[-protein, ]
-      }
-    }
-    brank <- barcodeRanks(dat, lower = threshold)
-    inflection <-
-      ifelse(is.null(brank$inflection),
-             brank@metadata$inflection,
-             brank$inflection)
-    
-    ###background barcodes
-    if (is.null(dat_bg)) {
-      dat_bg <- SIM_bg(dat, threshold = threshold)
-    }
-    
-    
-    all_bg <- sum(Matrix::colSums(dat) %in% 1:inflection)
-    th_bg <- sum(Matrix::colSums(dat) %in% (threshold + 1):inflection)
-    
-    dat_true1 <- dat[, Matrix::colSums(dat) > inflection]
-    
-    
-    TP_CB2 <- matrix(0, 6, n + 1)
-    colnames(TP_CB2) <- c(paste0("rep", 1:n), "Ave")
-    rownames(TP_CB2) <-
-      c("G1", "G1 prop", "G2", "G2 prop", "G3", "G3 prop")
-    
-    FP_CB2 <- TP_CB2[1:4, ]
-    rownames(FP_CB2) <-
-      c(
-        paste0("all (", all_bg, ")"),
-        "all prop",
-        paste0(">", threshold, " (", th_bg, ")"),
-        paste0(">", threshold, " prop")
-      )
-    
-    TP_ED <- TP_CB2
-    FP_ED <- FP_CB2
-    
-    SEED.rep <- as.integer(runif(n, 1, 100000))
-    
-    for (sss in 1:n) {
-      SEED.tmp <- SEED.rep[sss]
-      
-      cat(paste0("Run ", sss, "\n"))
-      
-      
-      set.seed(SEED.tmp)
-      
-      
-      
-      ###2000 G1 large cells
-      G1 <- dat_true1[, sample(ncol(dat_true1), n_large, replace = T)]
-      colnames(G1) <- paste0("G1_", 1:ncol(G1))
-      G1 <- as(G1, "dgCMatrix")
-      
-      if (threegroup) {
-        ###2000 G2 middle cells (50% downsampling)
-        G2 <- dat_true1[, sample(ncol(dat_true1), n_middle, replace = T)]
-        G2 <- as(G2, "dgCMatrix")
-        G2 <- downsampleMatrix(G2, 0.5)
-        colnames(G2) <- paste0("G2_", 1:ncol(G2))
-      }
-      
-      
-      ###2000 G3 small cells (10% downsampling)
-      G3 <- dat_true1[, sample(ncol(dat_true1), n_small, replace = T)]
-      G3 <- as(G3, "dgCMatrix")
-      G3 <- downsampleMatrix(G3, 0.1)
-      colnames(G3) <- paste0("G3_", 1:ncol(G3))
-      
-      if (new_sim) {
-        G1 <- reorder_mat(G1, rate = reorder_rate)
-        if (threegroup)
-          G2 <- reorder_mat(G2, rate = reorder_rate)
-        G3 <- reorder_mat(G3, rate = reorder_rate)
-      }
-
-      if (threegroup) {
-        dat_sim1 <- cbind(dat_bg, G1, G2, G3)
-      } else{
-        dat_sim1 <- cbind(dat_bg, G1, G3)
-      }
-      
-      
-      
-      set.seed(SEED.tmp)
-        if(usePackage){
-            res_CB2 <-
-                scCB2::CB2FindCell(dat_sim1,
-                          pooling_threshold = threshold,
-                          FDR_threshold = FDR,
-                          ...)
-        }else{
-            res_CB2 <-
-                Find_Cell(dat_sim1,
-                          pooling_threshold = threshold,
-                          FDR_threshold = FDR,
-                          ...)
-        }
-
-        res1 <-
-          c(colnames(res_CB2$cluster_matrix),
-            colnames(res_CB2$cell_matrix))
-
-      
-      
-      
-      TP_CB2[1, sss] <- length(grep(x = res1, pattern = "G1"))
-      TP_CB2[2, sss] <- TP_CB2[1, sss] / n_large
-      
-      TP_CB2[3, sss] <- length(grep(x = res1, pattern = "G2"))
-      TP_CB2[4, sss] <- TP_CB2[3, sss] / n_middle
-      
-      TP_CB2[5, sss] <- length(grep(x = res1, pattern = "G3"))
-      TP_CB2[6, sss] <- TP_CB2[5, sss] / n_small
-      
-      FP_CB2[1, sss] <- length(grep(x = res1, pattern = "bg"))
-      FP_CB2[2, sss] <- FP_CB2[1, sss] / all_bg
-      
-      FP_CB2[3, sss] <- length(grep(x = res1, pattern = "bg"))
-      FP_CB2[4, sss] <- FP_CB2[3, sss] / th_bg
-      
-      
-      
-      
-      eOut <- emptyDrops(dat_sim1, lower = threshold)
-      sim_ED <- dat_sim1[, ifelse(is.na(eOut$FDR), FALSE, eOut$FDR <= FDR)]
-      res_ED2 <- colnames(sim_ED)
-      
-      TP_ED[1, sss] <- length(grep(x = res_ED2, pattern = "G1"))
-      TP_ED[2, sss] <- TP_ED[1, sss] / n_large
-      
-      TP_ED[3, sss] <- length(grep(x = res_ED2, pattern = "G2"))
-      TP_ED[4, sss] <- TP_ED[3, sss] / n_middle
-      
-      TP_ED[5, sss] <- length(grep(x = res_ED2, pattern = "G3"))
-      TP_ED[6, sss] <- TP_ED[5, sss] / n_small
-      
-      FP_ED[1, sss] <- length(grep(x = res_ED2, pattern = "bg"))
-      FP_ED[2, sss] <- FP_ED[1, sss] / all_bg
-      
-      FP_ED[3, sss] <- length(grep(x = res_ED2, pattern = "bg"))
-      FP_ED[4, sss] <- FP_ED[3, sss] / th_bg
-      
-    }
-    
-    
-    TP_CB2[, n + 1] <- rowMeans(TP_CB2[, 1:n])
-    TP_ED[, n + 1] <- rowMeans(TP_ED[, 1:n])
-    FP_CB2[, n + 1] <- rowMeans(FP_CB2[, 1:n])
-    FP_ED[, n + 1] <- rowMeans(FP_ED[, 1:n])
-    
-    Stat <- matrix(NA, 2, 2)
-    colnames(Stat) <- c("CB2", "ED")
-    rownames(Stat) <- c("Power", "FDR")
-    Stat[1, 1] <-
-      (TP_CB2[2, n + 1] * n_large + TP_CB2[4, n + 1] * n_middle + TP_CB2[6, n +
-                                                                           1] * n_small) / (n_large + n_middle + n_small)
-    Stat[1, 2] <-
-      (TP_ED[2, n + 1] * n_large + TP_ED[4, n + 1] * n_middle + TP_ED[6, n +
-                                                                        1] * n_small) / (n_large + n_middle + n_small)
-    Stat[2, 1] <-
-      FP_CB2[3, n + 1] / (FP_CB2[3, n + 1] + Stat[1, 1] * (n_large + n_middle +
-                                                             n_small))
-    Stat[2, 2] <-
-      FP_ED[3, n + 1] / (FP_ED[3, n + 1] + Stat[1, 2] * (n_large + n_middle +
-                                                           n_small))
-    Power_diff <- Stat[1, 1] - Stat[1, 2]
-    
-    return(
-      list(
-        TP_CB2 = TP_CB2,
-        FP_CB2 = FP_CB2,
-        TP_ED = TP_ED,
-        FP_ED = FP_ED,
-        Stat = Stat,
-        Power_diff = Power_diff
-      )
-    )
-  }
 
 Attenuate <- function(x){
-    q95 <- quantile(x,0.925)
+    q95 <- quantile(x,0.95)
     x[x>q95] <- q95
     return(x)
 }
 
-Htmap <- function(dat,set, Allgene=T, background_threshold=100, Plot="both", AddBackground=F){
+Htmap <- function(dat,set, Allgene=T, background_threshold=100, 
+                  Plot="both", AddBackground=F, equal=F, attenuate=F){
     dat <- as.matrix(dat)
 
     if(set=="mbrain"){
@@ -488,7 +81,7 @@ Htmap <- function(dat,set, Allgene=T, background_threshold=100, Plot="both", Add
     
     dat_C <- dat[,Group=="Captured"]
     dat_NC <- dat[,Group=="Not captured"]
-    dat_NC <- dat_NC[,order(Matrix::colSums(dat_NC),decreasing = T)]
+
     
     EDonly <- colnames(dat_C)%in%diff_set$ED_only
     if(sum(EDonly)>0){
@@ -507,6 +100,7 @@ Htmap <- function(dat,set, Allgene=T, background_threshold=100, Plot="both", Add
     if(Plot%in%c("both","H")){
         if(!all(Group=="Not captured")){
             
+         
             if(ncol(dat)>400){
                 ratio_C <-ncol(dat_C)/ncol(dat)
                 ratio_NC <- 1-ratio_C
@@ -514,9 +108,19 @@ Htmap <- function(dat,set, Allgene=T, background_threshold=100, Plot="both", Add
                 dat_C <- dat_C[,sample(ncol(dat_C),400*ratio_C)]
                 dat_NC <- dat_NC[,sample(ncol(dat_NC),400*ratio_NC)]
             }
-            # 
-            # if(ncol(dat_C)>=100) dat_C <- dat_C[,sample(ncol(dat_C),100)]
-            # if(ncol(dat_C)>=100) dat_NC <- dat_NC[,sample(ncol(dat_NC),100)]
+
+            if(equal&ncol(dat_C)>ncol(dat_NC)){
+                set.seed(1)
+                dat_C <- dat_C[,sample(ncol(dat_C),ncol(dat_NC))]
+            }
+            
+            if(attenuate){
+                dat_C <- Attenuate(dat_C)
+                dat_NC <- Attenuate(dat_NC)
+            }
+            
+            dat_NC <- dat_NC[,order(Matrix::colSums(dat_NC),decreasing = T)]
+            dat_C <- dat_C[,order(Matrix::colSums(dat_C),decreasing = T)]
             
             dat_heatmap0 <- cbind(dat_C,dat_NC)
             dat_heatmap0 <- t(apply(dat_heatmap0,1,Attenuate))
@@ -525,7 +129,7 @@ Htmap <- function(dat,set, Allgene=T, background_threshold=100, Plot="both", Add
             
             Cor <- round(cor(Matrix::rowSums(dat_C),Matrix::rowSums(dat_NC)),3)
             #scale_fill_gradient(low = "white",high = "deeppink1")
-            gp <- ggplot(dat_heatmap1, aes(x=Barcode, y=Gene)) + geom_tile(aes(fill = log(value+1)),colour = "red", size=10e-5) + 
+            gp <- ggplot(dat_heatmap1, aes(x=Barcode, y=Gene)) + geom_tile(aes(fill = log(value+1)),colour = "white", size=10e-5) + 
                 scale_fill_gradient(low = "white",high = "green3") + labs(fill="")+
                 theme(axis.text.y=element_text(size=5), axis.text.x = element_blank(),
                       axis.title=element_blank()) + 
@@ -537,7 +141,6 @@ Htmap <- function(dat,set, Allgene=T, background_threshold=100, Plot="both", Add
     # plot(ksmooth(x=1:nrow(dat_C),y=rowMeans(dat_bg[rownames(dat_C),])),type="l",ylab="Ave expr",xlab="Gene index", main="Background")
     # if(ncol(dat_C)!=0) plot(rowMeans(dat_C),type="h",ylab="Ave expr",xlab="Gene index", main="Captured by ED")
     # plot(rowMeans(dat_NC),type="h",ylab="Ave expr",xlab="Gene index", main="Not captured by ED")
-
 }
 
 # Extra plots for manuscript revision
@@ -550,6 +153,43 @@ Htmap_revision <- function(barcodeID,dat, background_threshold=100, AddBackgroun
             dat=dat, AddBackground=AddBackground)
 }
 
+mk_hist <- function(mk_gene,cluster_cell,dat_r,diff_dat, upper){
+    knee_cell <- colnames(dat_r)[colSums(dat_r)>=upper]
+    knee_cell <- intersect(knee_cell,cluster_cell)
+    common_cell <- setdiff(diff_dat$Common_b,knee_cell)
+    common_cell <- intersect(common_cell,cluster_cell)
+    CB2_cell <- intersect(c(diff_dat$CB2_only),cluster_cell)
+    
+    exp_CB2 <- dat_r[,colnames(dat_r)%in%CB2_cell,drop=F] %>%
+        rowSums %>%
+        goodTuringProportions
+    exp_common <- dat_r[,colnames(dat_r)%in%common_cell,drop=F] %>%
+        rowSums %>% 
+        goodTuringProportions
+    exp_knee <- dat_r[,colnames(dat_r)%in%knee_cell,drop=F] %>%
+        rowSums %>% 
+        goodTuringProportions
+    
+    dat_bg <- dat_r[,colSums(dat_r)<=100]
+    exp_bg <- dat_bg %>% rowSums %>% goodTuringProportions
+    
+    mk_df <- data.frame(rbind(exp_knee[mk_gene,1],exp_common[mk_gene,1],exp_CB2[mk_gene,1],exp_bg[mk_gene,1]),
+                        group=c("common (high count)","common (tested)","unique in CB2","Background"))
+    mk_df$group <- factor(mk_df$group,levels = rev(c("common (high count)","common (tested)","unique in CB2","Background")))
+    
+
+    mk_df <- melt(mk_df,id="group")
+    gp <- ggplot(data=mk_df, aes(x=variable, y=value,fill=group, width=0.8)) + 
+        geom_bar(stat="identity", position = "dodge")+coord_flip()+
+               scale_fill_manual(values=rev(c( "deeppink3", "deeppink1","gold","#937C37")))+  theme_bw() + 
+        theme(panel.border = element_blank(), 
+              panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_blank(), 
+        axis.title = element_blank(), legend.position = "none")
+    # print(gp)
+    return(gp)
+    
+}
 
 dist_plot <- function(bset1,bset2=NULL,bset3=NULL,bgset,gene,dat,
                       Allgene = T, AddBackground=T){
@@ -616,54 +256,7 @@ dist_plot <- function(bset1,bset2=NULL,bset3=NULL,bgset,gene,dat,
     plot(gp_bg)
 }
 
-enrich_matlist <- function(x, term, topNterm=20, topNgene=200, filter=T){
-    if(filter){
-        for(i in seq_along(x)){
-            RPgene <- grep("\\<RPS|\\<RPL|\\<Rps|\\<Rpl",x[[i]])
-            MTgene <- grep("\\<MT-|\\<mt-",x[[i]])
-            if(length(c(RPgene,MTgene))!=0){
-                x[[i]] <- x[[i]][-c(RPgene,MTgene)]
-            }
-
-        }
-    }
-    enrich_list <- list()
-    for(i in seq_along(x)){
-        gene_temp <- x[[i]][1:min(topNgene,length(x[[i]]))]
-        enrich_list[[i]] <- enrichr(gene_temp, term)
-    }
-    
-    term_list <- list()
-    for(j in seq_along(term)){
-        enrich_by_term <- lapply(enrich_list,function(x) x[[j]])
-        term_all_geneset <- lapply(enrich_by_term, function(x) x$Term[1:topNterm])
-        term_unique <- unique(unlist(term_all_geneset))
-        term_mat <- matrix(0,length(term_unique),length(x))
-        colnames(term_mat) <- names(x)
-        rownames(term_mat) <- term_unique
-        for(k in seq_along(x)){
-            term_mat[term_all_geneset[[k]],k] <- 1
-        }
-        term_list[[j]] <- term_mat
-    }
-    names(term_list) <- term
-    return(term_list)
-}
-
-enrich_heatmap <- function(term_list,...){
-    if(is.matrix(term_list)){
-        gplots::heatmap.2(term_list, scale = "none",  col = c("white","#FF9999"),
-            tracecol = F, key=F,...)
-    }else{
-        for(i in seq_along(term_list)){
-            gplots::heatmap.2(term_list[[i]], scale = "none",  col = c("white","#FF9999"),
-                              tracecol = F, main=names(term_list)[i], key=F)
-        }
-    }
-}
-
-
-mk_plot <- function(mk_gene, prop=F,colorUp=T, diff_dat, dat_tsne_n1, dat_f,CB2=F){
+mk_plot <- function(mk_gene, prop=F, diff_dat, dat_tsne_n1, dat_f,CB2=F){
     if(!CB2) diff_dat <- NULL
     
     dat_tsne_n1 <- dat_tsne_n1[colnames(dat_f),]
@@ -681,49 +274,42 @@ mk_plot <- function(mk_gene, prop=F,colorUp=T, diff_dat, dat_tsne_n1, dat_f,CB2=
     }
     
     mk[mk>0] <- Attenuate(mk[mk>0])
-    tsne_dat <- data.frame(cbind(dat_tsne_n1,mk,Matrix::colSums(dat_f)))
-    colnames(tsne_dat)[c(1,2,ncol(tsne_dat)-1:0)] <- c("x","y","marker","count")
-    
+    tsne_dat <- data.frame(dat_tsne_n1,marker=mk,count=Matrix::colSums(dat_f))
+
     if(CB2){
         tsne_dat <- tsne_dat[rownames(dat_tsne_n1)%in%diff_dat$CB2_only,]
         mk <- tsne_dat$marker
     }
-        
+    
+    p <- ggplot()+guides(alpha = FALSE)+
+        geom_point(data = tsne_dat[mk==0,],aes(x=tSNE1,y=tSNE2),size=0.2,color="#f2f2f2")
+    
     if(prop){
-        p2 <- ggplot()+guides(alpha = FALSE)+
-            geom_point(data = tsne_dat[mk==0,],aes(x=x,y=y),size=0.2,color="#f2f2f2")
-        if(!colorUp){
-            p2$layers <- c(geom_point(data = tsne_dat[mk!=0,],aes(x=x,y=y,color=log(marker/count+10e-5),
-                                                                   alpha=log(marker/count+10e-5))), p2$layers)
-        }else{
-            p2$layers <- c(p2$layers, geom_point(data = tsne_dat[mk!=0,],aes(x=x,y=y,color=log(marker/count+10e-5),
-                                                                              alpha=log(marker/count+10e-5))))
-        }
-        
-        p2 <- p2+scale_color_gradient(low="orange", high="green",name = paste0("log prop\n ",mk_gene))+ 
-            theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+ 
-            xlim(min(dat_tsne_n1$tSNE1),max(dat_tsne_n1$tSNE1)) + ylim(min(dat_tsne_n1$tSNE2),max(dat_tsne_n1$tSNE2))
-        print(p2)
-        
-    }else{
-        p1 <- ggplot()+
-            geom_point(data = tsne_dat[mk==0,],aes(x=x,y=y),size=0.2,color="#f2f2f2")+
-            guides(alpha = FALSE)
-        if(!colorUp){
-            p1$layers <- c(geom_point(data = tsne_dat[mk!=0,],aes(x=x,y=y,color=marker,alpha=marker),size=0.2), p1$layers)
-        }else{
-            p1$layers <- c(p1$layers, geom_point(data = tsne_dat[mk!=0,],aes(x=x,y=y,color=marker,alpha=marker),size=0.2))
-        }
-        p1 <- p1+scale_color_gradient(low="orange", high="green",name = mk_gene)+ 
-            theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + 
-            xlim(min(dat_tsne_n1$tSNE1),max(dat_tsne_n1$tSNE1)) + ylim(min(dat_tsne_n1$tSNE2),max(dat_tsne_n1$tSNE2))
-        if(mk_gene=="count"){
-            p1 <- p1+scale_color_gradient(low="green", high="orange",name = mk_gene)
-        }
-        print(p1)
+        p$layers <- c(p$layers, geom_point(data =tsne_dat[mk!=0,],
+                                           aes(x=tSNE1,y=tSNE2,color=log(marker/count+10e-5),
+                                               alpha=log(marker/count+10e-5))))
+        nm <- paste0("log prop\n ",mk_gene)
     }
+    else{
+        p$layers <- c(p$layers, geom_point(data = tsne_dat[mk!=0,],
+                                           aes(x=tSNE1,y=tSNE2,color=marker,alpha=marker),size=0.2))
+        nm <- mk_gene
+    }
+    
+    p <- p+scale_color_gradient(low="orange", high="green",name = nm)+ 
+        theme_bw() + 
+        theme(panel.border = element_rect(colour = "black", fill=NA, size=0.8), 
+              legend.position = "none",
+              axis.title = element_blank(),
+              axis.text = element_blank(),
+              axis.ticks = element_blank(),
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(), 
+              axis.line = element_line(colour = "black"))+ 
+        xlim(min(tsne_dat$tSNE1),max(tsne_dat$tSNE1)) +
+        ylim(min(tsne_dat$tSNE2),max(tsne_dat$tSNE2))
+    
+    print(p)
 }
 
 check_range <- function(x, lower, upper){
@@ -819,10 +405,12 @@ DE <- function(celltype="ExN",gene, diff=T,tsne=Alz_tsne2_all, prop=F){
     # message(paste0("Sample size: ", n))
     
     tt <- wilcox.test(exp_C,exp_AD)
-    mean(exp_AD)/mean(exp_C)
+    #mean(exp_AD)/mean(exp_C)
 
     return(list(pval=round(-log10(tt$p.value),5), 
                 log2FC=log2(mean(exp_AD)/mean(exp_C)),
                 size=length(exp_C)+length(exp_AD),
                 test=tt))
 }
+
+

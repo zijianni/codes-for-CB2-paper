@@ -29,6 +29,7 @@ library(scran)
 library(irlba)
 library(scater)
 library(Seurat)
+library(patchwork)
 
 source("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/functions_forReal.R")
 
@@ -411,7 +412,9 @@ dev.off()
 # Revision: Boxplot of Subpop1~5
 
 ```{r}
-ggplot(Alz_tsne_n1[Alz_tsne_n1$Cluster%in%c(1:4,6:8,12,14,20),])+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.5)+ guides(colour = guide_legend(override.aes = list(size=5)))
+load("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/threshold_100/package/Alz_tsne1.RData")
+
+# ggplot(Alz_tsne_n1[Alz_tsne_n1$Cluster%in%c(1:4,6:8,12,14,20),])+geom_point(aes(x=tSNE1,y=tSNE2,color=Cluster),size=0.5)+ guides(colour = guide_legend(override.aes = list(size=5)))
 
 Subpop1 <- c(6)
 Subpop2 <- c(1:4)
@@ -497,7 +500,7 @@ DimPlot(Alz_DownSub2, reduction = "tsne",group.by = "new.ident",cols = c("deeppi
 
 Also do separate plot for Subpop5
 
-```{r}
+```{r,fig.height=3.5, fig.width=12}
 Alz_bg <- setdiff(colnames(Alz_r),colnames(AlzAll_CB2))
 Alz_bg_count <- colSums(Alz_r[,Alz_bg])
 Alz_bg_ED <- setdiff(colnames(Alz_r),colnames(AlzAll_ED))
@@ -522,27 +525,42 @@ ht_ED <- data.frame(UMI_count=c(Alz_ED_count,Alz_bg_ED_count),
                      group=rep(c("1.ED","2.Background"),
                                c(length(Alz_ED_count),length(Alz_bg_ED_count))))
 
-ggplot(data=ht_CB2,aes(UMI_count,fill=group))+geom_histogram(position="dodge",bins = 40)+
+gp1 <- ggplot(data=ht_CB2,aes(UMI_count,fill=group))+geom_histogram(position="dodge",bins = 40)+
     scale_x_log10(limits=c(100,Alz_knee+1000))+ylim(c(0,3300))+
     scale_fill_discrete(labels = c("CB2", "Background"))+ 
     theme(legend.position="top",legend.title = element_blank())
 
-ggplot(data=ht_CB2extra,aes(UMI_count,fill=group))+geom_histogram(position="dodge",bins = 40)+
+gp2 <- ggplot(data=ht_CB2extra,aes(UMI_count,fill=group))+geom_histogram(position="dodge",bins = 40)+
     scale_x_log10(limits=c(100,Alz_knee+1000))+ylim(c(0,3300))+
     scale_fill_discrete(labels = c("Additional CB2", "Background"))+ 
     theme(legend.position="top",legend.title = element_blank())
 
-ggplot(data=ht_ED,aes(UMI_count,fill=group))+geom_histogram(position="dodge",bins = 40)+
+gp3 <- ggplot(data=ht_ED,aes(UMI_count,fill=group))+geom_histogram(position="dodge",bins = 40)+
     scale_x_log10(limits=c(100,Alz_knee+1000))+ylim(c(0,3300))+
     scale_fill_discrete(labels = c("EmptyDrops", "Background"))+
     theme(legend.position="top",legend.title = element_blank())
 
+layout <- "ABC"
+plot(gp1+gp2+gp3+plot_layout(design = layout))
+
 ggplot(data=ht_CB2_Subpop5,aes(UMI_count,fill=group))+
     geom_histogram(position="dodge",bins = 40)+
-    scale_x_log10(limits=c(100 ,15579+1000))+ylim(c(0,3300))+
+    scale_x_log10(name="UMI total counts",limits=c(100 ,15579+1000))+ylim(c(0,3300))+
     scale_fill_discrete(labels = c("CB2 Subpop5", "Background"))+ 
-    coord_trans(y="log1p")+theme_bw() + theme(axis.text=element_text(size=10),axis.title.y = element_blank(),axis.title.x = element_blank(),legend.title = element_blank(),legend.position = "top",panel.border = element_rect(colour = "black", fill=NA, size=1.5), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+scale_y_continuous(breaks = c(10,30,100,300,1000,3000))
+    coord_trans(y="log1p")+scale_y_continuous(name = "Frequency", breaks = c(10,30,100,300,1000,3000))+
+    theme(legend.position="top",legend.title = element_blank())
 
++
+    theme_bw() + theme(axis.text=element_text(size=10),axis.title.y = element_blank(),axis.title.x = element_blank(),legend.title = element_blank(),legend.position = "top",panel.border = element_rect(colour = "black", fill=NA, size=1.5), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+```
+
+Calculate proportion of CB2 additional cells falling under 25th quantile of total count of all cells tested out by CB2 and ED:
+
+```{r}
+Alz_tested_count <- colSums(Alz_r[,c(diff_Alz_knee$Common_b,diff_Alz_knee$CB2_only,diff_Alz_knee$ED_only)])
+q25 <- quantile(Alz_tested_count,0.25)
+mean(Alz_CB2extra_count<q25) # 0.41
 ```
 
 
@@ -571,7 +589,7 @@ DimPlot(Alz_Sub3,reduction = "tsne",group.by = "new.ident",cols = viridis::virid
 
 ```
 
-# Revision: Add small and large background with CB2 unique cells.
+# Revision: Add small and large background barcodes with CB2 unique cells.
 
 Sample 2000 from background barcodes between 1~100 as small background barcodes.
 Sample 2000 from background barcodes greater than 100 as large background barcodes.
@@ -596,5 +614,21 @@ Alz_S <- RunTSNE(Alz_S, dims = 1:50, check_duplicates = FALSE)
 tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Revised/1-2-1.tif"),width=16,height=10,units="cm",res=300,pointsize=10, compression = "lzw")
 DimPlot(Alz_S, reduction = "tsne", group.by = "new.ident",cols = viridis::viridis(3))
 dev.off()
+
+```
+
+# Revision: check proportion of case/control cells from CB2 and ED calls
+
+```{r}
+Case <- 1:24*2
+Control <- 1:24*2-1
+
+CB2cell_group <- gsub(".*-(.*)","\\1",c(diff_Alz$Common_b,diff_Alz$CB2_only))
+EDcell_group <- gsub(".*-(.*)","\\1",c(diff_Alz$Common_b,diff_Alz$ED_only))
+
+CB2_Case <- sum(CB2cell_group%in%Case)
+CB2_Control <- sum(CB2cell_group%in%Control)
+ED_Case <- sum(EDcell_group%in%Case)
+ED_Control <- sum(EDcell_group%in%Control)
 
 ```
