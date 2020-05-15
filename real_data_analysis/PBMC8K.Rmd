@@ -336,7 +336,7 @@ Mn_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("0","11","15")]
 NK_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("9")]
 B_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("5","7","17")]
 T_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("1","2","3","4","8","10")]
-
+Mt_cell <- rownames(PBMC8K_tsne_n1)[PBMC8K_tsne_n1$Cluster%in%c("6")]
 
 # Sort by median cell size
 summary(colSums(PBMC8K_f[,Mk_cell])) # 866.3   5
@@ -344,18 +344,21 @@ summary(colSums(PBMC8K_f[,Mn_cell])) # 1992.0   2
 summary(colSums(PBMC8K_f[,NK_cell])) # 2067    1
 summary(colSums(PBMC8K_f[,B_cell])) # 1874   4
 summary(colSums(PBMC8K_f[,T_cell])) # 1877   3
+summary(colSums(PBMC8K_f[,Mt_cell])) # 686.3 6
 
 
 gp_T <- mk_hist(c("CD3D"),T_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
     labs(title="T cells - Subpop4")
 gp_B <- mk_hist(c("CD79A","CD19"),B_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
-    labs(title="B cells - Subpop2")
+    labs(title="B cells - Subpop1")
 gp_NK <- mk_hist(c("NKG7"),NK_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
-    labs(title="NK cells - Subpop5")
+    labs(title="NK cells - Subpop6")
 gp_Mk <- mk_hist(c("PF4","PPBP"),Mk_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
     labs(title="Megakaryocytes - Subpop3")
 gp_Mn <- mk_hist(c("CD14","CD68"),Mn_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
-    labs(title="CD14+ Monocytes - Subpop1")
+    labs(title="CD14+ Monocytes - Subpop2")
+gp_Mt <- mk_hist(c("MT-CO3","MT-ATP6"),Mt_cell,PBMC8K_r,diff_PBMC8K, upper = PBMC8K_knee)+
+    labs(title="High mitochondrial group - Subpop5")
 
 layout <- "A
 B
@@ -363,7 +366,7 @@ C
 D
 E"
 
-plot(gp_NK + gp_Mn + gp_T + gp_B + gp_Mk + plot_layout(design = layout))
+plot(gp_Mn + gp_T + gp_B + gp_Mk + gp_Mt + plot_layout(design = layout))
 
 
 tiff(filename ="~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots_newH/PBMC8K/PBMC8K_marker_%03d.tif",width=5,height=1.2,units="in",res=300, compression = "lzw")
@@ -372,10 +375,11 @@ plot(gp_Mn)
 plot(gp_T)
 plot(gp_B)
 plot(gp_Mk)
+plot(gp_Mt)
 dev.off()
 
 
-MK_gene2 <-c("NKG7","CD14","CD3D","CD19","PF4")
+MK_gene2 <-c("NKG7","CD14","CD3D","CD19","PF4","MT-CO3")
 for(GG in MK_gene2){
     print(GG)
     tiff(filename =paste0("~/Google Drive/Hallu/codes/ckgroup/DropletUtils/manuscript/Rplots_newH/PBMC8K/PBMC8K_",GG,".tif"),width=7,height=6,units="cm",res=300,pointsize=10, compression = "lzw")
