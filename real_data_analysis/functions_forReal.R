@@ -174,7 +174,7 @@ mk_hist <- function(mk_gene,cluster_cell,dat_r,diff_dat, upper){
     exp_bg <- dat_bg %>% rowSums %>% goodTuringProportions
     
     mk_df <- data.frame(rbind(exp_knee[mk_gene,1],exp_common[mk_gene,1],exp_CB2[mk_gene,1],exp_bg[mk_gene,1]),
-                        group=c("common (high count)","common (tested)","unique in CB2","Background"))
+                        group=c("common (high count)","common (tested)","unique in CB2","Background"),check.names = F)
     mk_df$group <- factor(mk_df$group,levels = rev(c("common (high count)","common (tested)","unique in CB2","Background")))
     
 
@@ -265,10 +265,10 @@ mk_plot <- function(mk_gene, prop=F, diff_dat, dat_tsne_n1, dat_f,CB2=F){
         mk <- Matrix::colSums(dat_f)
     }else if(mk_gene=="MT"){
         
-        mk <- Matrix::colSums(dat_f[grep("\\<MT-",rownames(com_mat1)),])
+        mk <- Matrix::colSums(dat_f[grep("\\<MT-",rownames(dat_f)),])
     }else if(mk_gene=="mt"){
         
-        mk <- Matrix::colSums(dat_f[grep("\\<mt-",rownames(com_mat1)),])
+        mk <- Matrix::colSums(dat_f[grep("\\<mt-",rownames(dat_f)),])
     }else{
         mk <- dat_f[mk_gene,]
     }
